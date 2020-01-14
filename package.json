@@ -21,5 +21,9 @@
   "bugs": {
     "url": "https://github.com/jondubois/proper-order-book/issues"
   },
-  "homepage": "https://github.com/jondubois/proper-order-book#readme"
+  "homepage": "https://github.com/jondubois/proper-order-book#readme",
+  "dependencies": {
+    "linked-list": "^2.1.0",
+    "proper-skip-list": "^4.0.0"
+  }
 }
