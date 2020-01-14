@@ -14,10 +14,15 @@ class ProperOrderBook {
   }
 
   _addAsk(ask) {
-    ask = {...ask};
-    ask.sizeRemaining = ask.size;
-    ask.lastSizeTaken = 0;
-    ask.lastValueTaken = 0;
+    if (ask.sizeRemaining == null) {
+      ask.sizeRemaining = ask.size;
+    }
+    if (ask.lastSizeTaken == null) {
+      ask.lastSizeTaken = 0;
+    }
+    if (ask.lastValueTaken == null) {
+      ask.lastValueTaken = 0;
+    }
 
     let result = {
       taker: ask,
@@ -26,15 +31,25 @@ class ProperOrderBook {
       takeValue: 0
     };
     let highestBid = this.peekBids();
-    if (!highestBid || ask.price > highestBid.price) {
+    if (
+      ask.type === 'limit' &&
+      (!highestBid || ask.price > highestBid.price)
+    ) {
       this._insertAsk(ask);
     } else {
       let iterator = this.bidList.findEntriesFromMax();
       for (let [currentBidPrice, priceOrderLinkedList] of iterator) {
+        if (
+          (ask.type === 'limit' && ask.price > currentBidPrice) ||
+          ask.sizeRemaining <= 0
+        ) {
+          break;
+        }
         let currentItem = priceOrderLinkedList.head;
         while (currentItem) {
+          let nextItem = currentItem.next;
           let currentBid = currentItem.order;
-          if (ask.price > currentBid.price || ask.sizeRemaining <= 0) {
+          if (ask.sizeRemaining <= 0) {
             break;
           }
           let askValueRemaining = ask.sizeRemaining * currentBid.price;
@@ -44,6 +59,7 @@ class ProperOrderBook {
             currentBid.lastSizeTaken = currentBidSizeRemaining;
             currentBid.lastValueTaken = currentBid.valueRemaining;
             currentBid.valueRemaining = 0;
+            currentItem.detach();
           } else {
             currentBid.lastSizeTaken = ask.sizeRemaining;
             currentBid.lastValueTaken = askValueRemaining;
@@ -53,12 +69,12 @@ class ProperOrderBook {
           result.makers.push(currentBid);
           result.takeSize += currentBid.lastValueTaken / currentBid.price;
           result.takeValue += currentBid.lastValueTaken;
-          currentItem = currentItem.next;
+          currentItem = nextItem;
         }
       }
-    }
-    if (ask.sizeRemaining > 0) {
-      this._insertAsk(ask);
+      if (ask.sizeRemaining > 0) {
+        this._insertAsk(ask);
+      }
     }
     return result;
   }
@@ -76,10 +92,15 @@ class ProperOrderBook {
   }
 
   _addBid(bid) {
-    bid = {...bid};
-    bid.valueRemaining = bid.value;
-    bid.lastSizeTaken = 0;
-    bid.lastValueTaken = 0;
+    if (bid.valueRemaining == null) {
+      bid.valueRemaining = bid.value;
+    }
+    if (bid.lastSizeTaken == null) {
+      bid.lastSizeTaken = 0;
+    }
+    if (bid.lastValueTaken == null) {
+      bid.lastValueTaken = 0;
+    }
 
     let result = {
       taker: bid,
@@ -88,15 +109,25 @@ class ProperOrderBook {
       takeValue: 0
     };
     let lowestAsk = this.peekAsks();
-    if (!lowestAsk || bid.price < lowestAsk.price) {
+    if (
+      bid.type === 'limit' &&
+      (!lowestAsk || bid.price < lowestAsk.price)
+    ) {
       this._insertBid(bid);
     } else {
       let iterator = this.askList.findEntriesFromMin();
       for (let [currentAskPrice, priceOrderLinkedList] of iterator) {
+        if (
+          (bid.type === 'limit' && bid.price < currentAskPrice) ||
+          bid.valueRemaining <= 0
+        ) {
+          break;
+        }
         let currentItem = priceOrderLinkedList.head;
         while (currentItem) {
+          let nextItem = currentItem.next;
           let currentAsk = currentItem.order;
-          if (bid.price < currentAsk.price || bid.valueRemaining <= 0) {
+          if (bid.valueRemaining <= 0) {
             break;
           }
           let bidSizeRemaining = bid.valueRemaining / currentAsk.price;
@@ -106,6 +137,7 @@ class ProperOrderBook {
             currentAsk.lastSizeTaken = currentAsk.sizeRemaining;
             currentAsk.lastValueTaken = currentAskValueRemaining;
             currentAsk.sizeRemaining = 0;
+            currentItem.detach();
           } else {
             currentAsk.lastSizeTaken = bidSizeRemaining;
             currentAsk.lastValueTaken = bid.valueRemaining;
@@ -115,12 +147,12 @@ class ProperOrderBook {
           result.makers.push(currentAsk);
           result.takeSize += currentAsk.lastSizeTaken;
           result.takeValue += currentAsk.lastSizeTaken * currentAsk.price;
-          currentItem = currentItem.next;
+          currentItem = nextItem;
         }
       }
-    }
-    if (bid.valueRemaining > 0) {
-      this._insertBid(bid);
+      if (bid.valueRemaining > 0) {
+        this._insertBid(bid);
+      }
     }
     return result;
   }
@@ -181,14 +213,6 @@ class ProperOrderBook {
     this.askList.clear();
     this.bidList.clear();
     this.orderItemMap.clear();
-  }
-
-  getSnapshot() {
-
-  }
-
-  setSnapshot(snapshot) {
-
   }
 }
 
