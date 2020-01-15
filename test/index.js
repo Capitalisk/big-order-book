@@ -407,25 +407,190 @@ describe('ProperOrderBook unit tests', async () => {
       assert(orderBook.askList.length === 0);
       assert(orderBook.bidList.length === 0);
     });
+
+    it('should support market bid orders', async () => {
+      orderBook.add({
+        id: `ask0`,
+        type: 'limit',
+        price: .5,
+        targetChain: 'lsk',
+        targetWalletAddress: '22245678912345678222L',
+        senderId: '11111111111222222222L',
+        side: 'ask',
+        size: 100
+      });
+      orderBook.add({
+        id: `ask1`,
+        type: 'limit',
+        price: .6,
+        targetChain: 'lsk',
+        targetWalletAddress: '22245678912345678222L',
+        senderId: '11111111111222222222L',
+        side: 'ask',
+        size: 100
+      });
+      result = orderBook.add({
+        id: `bid0`,
+        type: 'market',
+        targetChain: 'clsk',
+        targetWalletAddress: '22245678912345678222L',
+        senderId: '11111111111222222222L',
+        side: 'bid',
+        value: 120
+      });
+
+      assert(result.takeSize === 200);
+      assert(result.takeValue === 110);
+      assert(result.taker.valueRemaining === 10);
+      assert(result.taker.lastValueTaken === 0);
+      assert(result.taker.lastSizeTaken === 0);
+
+      assert(orderBook.askList.length === 0);
+      assert(orderBook.bidList.length === 0);
+    });
+
+    it('should support market ask orders', async () => {
+      orderBook.add({
+        id: `bid0`,
+        type: 'limit',
+        price: .5,
+        targetChain: 'clsk',
+        targetWalletAddress: '22245678912345678222L',
+        senderId: '11111111111222222222L',
+        side: 'bid',
+        value: 50
+      });
+      orderBook.add({
+        id: `bid1`,
+        type: 'limit',
+        price: .6,
+        targetChain: 'clsk',
+        targetWalletAddress: '22245678912345678222L',
+        senderId: '11111111111222222222L',
+        side: 'bid',
+        value: 60
+      });
+      result = orderBook.add({
+        id: `ask0`,
+        type: 'market',
+        targetChain: 'lsk',
+        targetWalletAddress: '22245678912345678222L',
+        senderId: '11111111111222222222L',
+        side: 'ask',
+        size: 220
+      });
+
+      assert(result.takeSize === 200);
+      assert(result.takeValue === 110);
+      assert(result.taker.sizeRemaining === 20);
+      assert(result.taker.lastValueTaken === 0);
+      assert(result.taker.lastSizeTaken === 0);
+
+      assert(orderBook.askList.length === 0);
+      assert(orderBook.bidList.length === 0);
+    });
   });
 
   describe('#has', async () => {
-    beforeEach(async () => {
+    it('should support looking up orders by id', async () => {
+      orderBook.add({
+        id: `ask0`,
+        type: 'limit',
+        price: .5,
+        targetChain: 'lsk',
+        targetWalletAddress: '22245678912345678222L',
+        senderId: '11111111111222222222L',
+        side: 'ask',
+        size: 100
+      });
+      orderBook.add({
+        id: `bid0`,
+        type: 'limit',
+        price: .4,
+        targetChain: 'clsk',
+        targetWalletAddress: '22245678912345678222L',
+        senderId: '11111111111222222222L',
+        side: 'bid',
+        value: 100
+      });
 
-    });
+      result = orderBook.has('ask1');
+      assert(result === false);
 
-    it('should', async () => {
+      result = orderBook.has('bid1');
+      assert(result === false);
 
+      result = orderBook.has('ask0');
+      assert(result === true);
+
+      result = orderBook.has('bid0');
+      assert(result === true);
     });
   });
 
   describe('#remove', async () => {
     beforeEach(async () => {
-
+      orderBook.add({
+        id: `ask0`,
+        type: 'limit',
+        price: .5,
+        targetChain: 'lsk',
+        targetWalletAddress: '22245678912345678222L',
+        senderId: '11111111111222222222L',
+        side: 'ask',
+        size: 100
+      });
+      orderBook.add({
+        id: `ask1`,
+        type: 'limit',
+        price: .6,
+        targetChain: 'lsk',
+        targetWalletAddress: '22245678912345678222L',
+        senderId: '11111111111222222222L',
+        side: 'ask',
+        size: 100
+      });
+      orderBook.add({
+        id: `bid0`,
+        type: 'limit',
+        price: .4,
+        targetChain: 'clsk',
+        targetWalletAddress: '22245678912345678222L',
+        senderId: '11111111111222222222L',
+        side: 'bid',
+        value: 100
+      });
     });
 
-    it('should', async () => {
+    it('should remove orders that exist and return the removed orders', async () => {
+      result = orderBook.remove('ask0');
 
+      assert(result != null);
+      assert(result.id === 'ask0');
+
+      assert(orderBook.askList.length === 1);
+      assert(orderBook.bidList.length === 1);
+
+      result = orderBook.remove('bid0');
+
+      assert(result != null);
+      assert(result.id === 'bid0');
+
+      assert(orderBook.askList.length === 1);
+      assert(orderBook.bidList.length === 0);
+
+      orderBook.remove('ask1');
+
+      assert(orderBook.askList.length === 0);
+      assert(orderBook.bidList.length === 0);
+    });
+
+    it('should return undefined if the order does not exist', async () => {
+      result = orderBook.remove('bid111');
+
+      assert(result === undefined);
+      assert(orderBook.askList.length === 2);
+      assert(orderBook.bidList.length === 1);
     });
   });
 
@@ -587,11 +752,38 @@ describe('ProperOrderBook unit tests', async () => {
 
   describe('#clear', async () => {
     beforeEach(async () => {
-
+      for (let i = 0; i < 100; i++) {
+        orderBook.add({
+          id: `ask${i}`,
+          type: 'limit',
+          price: (i + 1) / 100,
+          targetChain: 'lsk',
+          targetWalletAddress: '22245678912345678222L',
+          senderId: '11111111111222222222L',
+          side: 'ask',
+          size: (i + 1) * 10
+        });
+      }
+      for (let i = 0; i < 100; i++) {
+        orderBook.add({
+          id: `bid${i}`,
+          type: 'limit',
+          price: (i + 1) / 100000,
+          targetChain: 'clsk',
+          targetWalletAddress: '22245678912345678222L',
+          senderId: '11111111111222222222L',
+          side: 'bid',
+          value: (i + 1) * 10
+        });
+      }
     });
 
-    it('should', async () => {
-
+    it('should remove all entries from the order book', async () => {
+      orderBook.clear();
+      assert([...orderBook.getAskIteratorFromMin()].length === 0);
+      assert([...orderBook.getBidIteratorFromMin()].length === 0);
+      assert(orderBook.askList.length === 0);
+      assert(orderBook.bidList.length === 0);
     });
   });
 });

@@ -167,7 +167,7 @@ class ProperOrderBook {
           currentItem = nextItem;
         }
       }
-      if (ask.sizeRemaining > 0) {
+      if (ask.type === 'limit' && ask.sizeRemaining > 0) {
         this._insertAsk(ask);
       }
     }
@@ -263,7 +263,7 @@ class ProperOrderBook {
           currentItem = nextItem;
         }
       }
-      if (bid.valueRemaining > 0) {
+      if (bid.type === 'limit' && bid.valueRemaining > 0) {
         this._insertBid(bid);
       }
     }
