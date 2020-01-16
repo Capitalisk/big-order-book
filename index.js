@@ -5,8 +5,8 @@ class ProperOrderBook {
 
   constructor() {
     this.orderItemMap = new Map();
-    this.askList = new ProperSkipList();
-    this.bidList = new ProperSkipList();
+    this.askList = new ProperSkipList({updateLength: false});
+    this.bidList = new ProperSkipList({updateLength: false});
   }
 
   add(order) {
@@ -130,6 +130,8 @@ class ProperOrderBook {
       this._insertAsk(ask);
     } else {
       let iterator = this.bidList.findEntriesFromMax();
+      let deleteRangeMin;
+      let deleteRangeMax;
       for (let [currentBidPrice, priceOrderLinkedList] of iterator) {
         if (
           (ask.type === 'limit' && ask.price > currentBidPrice) ||
@@ -152,7 +154,10 @@ class ProperOrderBook {
             currentBid.lastValueTaken = currentBid.valueRemaining;
             currentBid.valueRemaining = 0;
             if (currentItem.list.size <= 1) {
-              this.bidList.delete(currentBidPrice);
+              if (deleteRangeMax == null) {
+                deleteRangeMax = currentBidPrice;
+              }
+              deleteRangeMin = currentBidPrice;
             }
             currentItem.detach();
           } else {
@@ -166,6 +171,9 @@ class ProperOrderBook {
           result.takeValue += currentBid.lastValueTaken;
           currentItem = nextItem;
         }
+      }
+      if (deleteRangeMin != null) {
+        this.bidList.deleteRange(deleteRangeMin, deleteRangeMax, true, true);
       }
       if (ask.type === 'limit' && ask.sizeRemaining > 0) {
         this._insertAsk(ask);
@@ -226,6 +234,8 @@ class ProperOrderBook {
       this._insertBid(bid);
     } else {
       let iterator = this.askList.findEntriesFromMin();
+      let deleteRangeMin;
+      let deleteRangeMax;
       for (let [currentAskPrice, priceOrderLinkedList] of iterator) {
         if (
           (bid.type === 'limit' && bid.price < currentAskPrice) ||
@@ -248,7 +258,10 @@ class ProperOrderBook {
             currentAsk.lastValueTaken = currentAskValueRemaining;
             currentAsk.sizeRemaining = 0;
             if (currentItem.list.size <= 1) {
-              this.askList.delete(currentAskPrice);
+              if (deleteRangeMin == null) {
+                deleteRangeMin = currentAskPrice;
+              }
+              deleteRangeMax = currentAskPrice;
             }
             currentItem.detach();
           } else {
@@ -262,6 +275,9 @@ class ProperOrderBook {
           result.takeValue += currentAsk.lastSizeTaken * currentAsk.price;
           currentItem = nextItem;
         }
+      }
+      if (deleteRangeMin != null) {
+        this.askList.deleteRange(deleteRangeMin, deleteRangeMax, true, true);
       }
       if (bid.type === 'limit' && bid.valueRemaining > 0) {
         this._insertBid(bid);

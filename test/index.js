@@ -368,8 +368,8 @@ describe('ProperOrderBook unit tests', async () => {
         size: 200
       });
 
-      assert(orderBook.askList.length === 0);
-      assert(orderBook.bidList.length === 0);
+      assert([...orderBook.askList.findEntriesFromMin()].length === 0);
+      assert([...orderBook.bidList.findEntriesFromMin()].length === 0);
     });
 
     it('should remove matched ask orders from the order book', async () => {
@@ -404,8 +404,8 @@ describe('ProperOrderBook unit tests', async () => {
         value: 110
       });
 
-      assert(orderBook.askList.length === 0);
-      assert(orderBook.bidList.length === 0);
+      assert([...orderBook.askList.findEntriesFromMin()].length === 0);
+      assert([...orderBook.bidList.findEntriesFromMin()].length === 0);
     });
 
     it('should support market bid orders', async () => {
@@ -445,8 +445,8 @@ describe('ProperOrderBook unit tests', async () => {
       assert(result.taker.lastValueTaken === 0);
       assert(result.taker.lastSizeTaken === 0);
 
-      assert(orderBook.askList.length === 0);
-      assert(orderBook.bidList.length === 0);
+      assert([...orderBook.askList.findEntriesFromMin()].length === 0);
+      assert([...orderBook.bidList.findEntriesFromMin()].length === 0);
     });
 
     it('should support market ask orders', async () => {
@@ -486,8 +486,8 @@ describe('ProperOrderBook unit tests', async () => {
       assert(result.taker.lastValueTaken === 0);
       assert(result.taker.lastSizeTaken === 0);
 
-      assert(orderBook.askList.length === 0);
-      assert(orderBook.bidList.length === 0);
+      assert([...orderBook.askList.findEntriesFromMin()].length === 0);
+      assert([...orderBook.bidList.findEntriesFromMin()].length === 0);
     });
   });
 
@@ -568,29 +568,29 @@ describe('ProperOrderBook unit tests', async () => {
       assert(result != null);
       assert(result.id === 'ask0');
 
-      assert(orderBook.askList.length === 1);
-      assert(orderBook.bidList.length === 1);
+      assert([...orderBook.askList.findEntriesFromMin()].length === 1);
+      assert([...orderBook.bidList.findEntriesFromMin()].length === 1);
 
       result = orderBook.remove('bid0');
 
       assert(result != null);
       assert(result.id === 'bid0');
 
-      assert(orderBook.askList.length === 1);
-      assert(orderBook.bidList.length === 0);
+      assert([...orderBook.askList.findEntriesFromMin()].length === 1);
+      assert([...orderBook.bidList.findEntriesFromMin()].length === 0);
 
       orderBook.remove('ask1');
 
-      assert(orderBook.askList.length === 0);
-      assert(orderBook.bidList.length === 0);
+      assert([...orderBook.askList.findEntriesFromMin()].length === 0);
+      assert([...orderBook.bidList.findEntriesFromMin()].length === 0);
     });
 
     it('should return undefined if the order does not exist', async () => {
       result = orderBook.remove('bid111');
 
       assert(result === undefined);
-      assert(orderBook.askList.length === 2);
-      assert(orderBook.bidList.length === 1);
+      assert([...orderBook.askList.findEntriesFromMin()].length === 2);
+      assert([...orderBook.bidList.findEntriesFromMin()].length === 1);
     });
   });
 
@@ -782,8 +782,8 @@ describe('ProperOrderBook unit tests', async () => {
       orderBook.clear();
       assert([...orderBook.getAskIteratorFromMin()].length === 0);
       assert([...orderBook.getBidIteratorFromMin()].length === 0);
-      assert(orderBook.askList.length === 0);
-      assert(orderBook.bidList.length === 0);
+      assert([...orderBook.askList.findEntriesFromMin()].length === 0);
+      assert([...orderBook.bidList.findEntriesFromMin()].length === 0);
     });
   });
 });
