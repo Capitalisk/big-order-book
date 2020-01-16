@@ -22,6 +22,10 @@ describe('ProperOrderBook unit tests', async () => {
         side: 'ask',
         size: 100
       });
+
+      assert(orderBook.askCount === 1);
+      assert(orderBook.bidCount === 0);
+
       orderBook.add({
         id: `ask1`,
         type: 'limit',
@@ -52,6 +56,7 @@ describe('ProperOrderBook unit tests', async () => {
         side: 'bid',
         value: 10
       });
+
       let iterator = orderBook.getAskIteratorFromMin();
       assert(iterator.next().value.id === 'ask0');
       assert(iterator.next().value.id === 'ask1');
@@ -61,6 +66,11 @@ describe('ProperOrderBook unit tests', async () => {
       assert(iterator.next().value.id === 'bid0');
       assert(iterator.next().value.id === 'bid1');
       assert(iterator.next().value === undefined);
+
+      let allAsks = [...orderBook.getAskIteratorFromMin()];
+      let allBids = [...orderBook.getBidIteratorFromMin()];
+      assert(orderBook.askCount === allAsks.length);
+      assert(orderBook.bidCount === allBids.length);
     });
 
     it('should allow limit orders to get a better price if available', async () => {
@@ -101,6 +111,11 @@ describe('ProperOrderBook unit tests', async () => {
       assert(result.makers[0].lastSizeTaken === 80);
       assert(result.makers[0].lastValueTaken === 40);
       assert(result.makers[0].sizeRemaining === 20);
+
+      let allAsks = [...orderBook.getAskIteratorFromMin()];
+      let allBids = [...orderBook.getBidIteratorFromMin()];
+      assert(orderBook.askCount === allAsks.length);
+      assert(orderBook.bidCount === allBids.length);
     });
 
     it('should support multiple makers', async () => {
@@ -144,6 +159,11 @@ describe('ProperOrderBook unit tests', async () => {
       assert(result.makers[1].lastSizeTaken === 100);
       assert(result.makers[1].lastValueTaken === 60);
       assert(result.makers[1].sizeRemaining === 0);
+
+      let allAsks = [...orderBook.getAskIteratorFromMin()];
+      let allBids = [...orderBook.getBidIteratorFromMin()];
+      assert(orderBook.askCount === allAsks.length);
+      assert(orderBook.bidCount === allBids.length);
     });
 
     it('should add bid limit order to the order book if it is larger than available volume', async () => {
@@ -196,6 +216,11 @@ describe('ProperOrderBook unit tests', async () => {
       let lastEntry = iterator.next();
       assert(lastEntry.value === undefined);
       assert(lastEntry.done);
+
+      let allAsks = [...orderBook.getAskIteratorFromMin()];
+      let allBids = [...orderBook.getBidIteratorFromMin()];
+      assert(orderBook.askCount === allAsks.length);
+      assert(orderBook.bidCount === allBids.length);
     });
 
     it('should add ask limit order to the order book if it is larger than available volume', async () => {
@@ -247,6 +272,11 @@ describe('ProperOrderBook unit tests', async () => {
       let lastEntry = iterator.next();
       assert(lastEntry.value === undefined);
       assert(lastEntry.done);
+
+      let allAsks = [...orderBook.getAskIteratorFromMin()];
+      let allBids = [...orderBook.getBidIteratorFromMin()];
+      assert(orderBook.askCount === allAsks.length);
+      assert(orderBook.bidCount === allBids.length);
     });
 
     it('should throw an error if an ask order is added with missing or incorrect properties', async () => {
@@ -282,6 +312,11 @@ describe('ProperOrderBook unit tests', async () => {
         error = err;
       }
       assert(error != null);
+
+      let allAsks = [...orderBook.getAskIteratorFromMin()];
+      let allBids = [...orderBook.getBidIteratorFromMin()];
+      assert(orderBook.askCount === allAsks.length);
+      assert(orderBook.bidCount === allBids.length);
     });
 
     it('should throw an error if a bid order is added with missing or incorrect properties', async () => {
@@ -334,6 +369,11 @@ describe('ProperOrderBook unit tests', async () => {
         error = err;
       }
       assert(error != null);
+
+      let allAsks = [...orderBook.getAskIteratorFromMin()];
+      let allBids = [...orderBook.getBidIteratorFromMin()];
+      assert(orderBook.askCount === allAsks.length);
+      assert(orderBook.bidCount === allBids.length);
     });
 
     it('should remove matched bid orders from the order book', async () => {
@@ -370,6 +410,11 @@ describe('ProperOrderBook unit tests', async () => {
 
       assert([...orderBook.askList.findEntriesFromMin()].length === 0);
       assert([...orderBook.bidList.findEntriesFromMin()].length === 0);
+
+      let allAsks = [...orderBook.getAskIteratorFromMin()];
+      let allBids = [...orderBook.getBidIteratorFromMin()];
+      assert(orderBook.askCount === allAsks.length);
+      assert(orderBook.bidCount === allBids.length);
     });
 
     it('should remove matched ask orders from the order book', async () => {
@@ -406,6 +451,11 @@ describe('ProperOrderBook unit tests', async () => {
 
       assert([...orderBook.askList.findEntriesFromMin()].length === 0);
       assert([...orderBook.bidList.findEntriesFromMin()].length === 0);
+
+      let allAsks = [...orderBook.getAskIteratorFromMin()];
+      let allBids = [...orderBook.getBidIteratorFromMin()];
+      assert(orderBook.askCount === allAsks.length);
+      assert(orderBook.bidCount === allBids.length);
     });
 
     it('should support market bid orders', async () => {
@@ -447,6 +497,11 @@ describe('ProperOrderBook unit tests', async () => {
 
       assert([...orderBook.askList.findEntriesFromMin()].length === 0);
       assert([...orderBook.bidList.findEntriesFromMin()].length === 0);
+
+      let allAsks = [...orderBook.getAskIteratorFromMin()];
+      let allBids = [...orderBook.getBidIteratorFromMin()];
+      assert(orderBook.askCount === allAsks.length);
+      assert(orderBook.bidCount === allBids.length);
     });
 
     it('should support market ask orders', async () => {
@@ -488,6 +543,11 @@ describe('ProperOrderBook unit tests', async () => {
 
       assert([...orderBook.askList.findEntriesFromMin()].length === 0);
       assert([...orderBook.bidList.findEntriesFromMin()].length === 0);
+
+      let allAsks = [...orderBook.getAskIteratorFromMin()];
+      let allBids = [...orderBook.getBidIteratorFromMin()];
+      assert(orderBook.askCount === allAsks.length);
+      assert(orderBook.bidCount === allBids.length);
     });
   });
 
@@ -583,6 +643,11 @@ describe('ProperOrderBook unit tests', async () => {
 
       assert([...orderBook.askList.findEntriesFromMin()].length === 0);
       assert([...orderBook.bidList.findEntriesFromMin()].length === 0);
+
+      let allAsks = [...orderBook.getAskIteratorFromMin()];
+      let allBids = [...orderBook.getBidIteratorFromMin()];
+      assert(orderBook.askCount === allAsks.length);
+      assert(orderBook.bidCount === allBids.length);
     });
 
     it('should return undefined if the order does not exist', async () => {
@@ -591,6 +656,11 @@ describe('ProperOrderBook unit tests', async () => {
       assert(result === undefined);
       assert([...orderBook.askList.findEntriesFromMin()].length === 2);
       assert([...orderBook.bidList.findEntriesFromMin()].length === 1);
+
+      let allAsks = [...orderBook.getAskIteratorFromMin()];
+      let allBids = [...orderBook.getBidIteratorFromMin()];
+      assert(orderBook.askCount === allAsks.length);
+      assert(orderBook.bidCount === allBids.length);
     });
   });
 
@@ -784,6 +854,12 @@ describe('ProperOrderBook unit tests', async () => {
       assert([...orderBook.getBidIteratorFromMin()].length === 0);
       assert([...orderBook.askList.findEntriesFromMin()].length === 0);
       assert([...orderBook.bidList.findEntriesFromMin()].length === 0);
+
+      let allAsks = [...orderBook.getAskIteratorFromMin()];
+      let allBids = [...orderBook.getBidIteratorFromMin()];
+
+      assert(orderBook.askCount === allAsks.length);
+      assert(orderBook.bidCount === allBids.length);
     });
   });
 });

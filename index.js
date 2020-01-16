@@ -7,6 +7,8 @@ class ProperOrderBook {
     this.orderItemMap = new Map();
     this.askList = new ProperSkipList({updateLength: false});
     this.bidList = new ProperSkipList({updateLength: false});
+    this.askCount = 0;
+    this.bidCount = 0;
   }
 
   add(order) {
@@ -31,19 +33,21 @@ class ProperOrderBook {
     if (!orderItem) {
       return undefined;
     }
-
     let priceOrderLinkedList = orderItem.list;
     let order = orderItem.order;
     orderItem.detach();
 
-    if (priceOrderLinkedList.size <= 0) {
-      if (order.side === 'ask') {
+    if (order.side === 'ask') {
+      this.askCount--;
+      if (priceOrderLinkedList.size <= 0) {
         this.askList.delete(order.price);
-      } else {
+      }
+    } else {
+      this.bidCount--;
+      if (priceOrderLinkedList.size <= 0) {
         this.bidList.delete(order.price);
       }
     }
-
     this.orderItemMap.delete(orderId);
     return order;
   }
@@ -88,6 +92,8 @@ class ProperOrderBook {
     this.askList.clear();
     this.bidList.clear();
     this.orderItemMap.clear();
+    this.askCount = 0;
+    this.bidCount = 0;
   }
 
   _addAsk(ask) {
@@ -160,6 +166,7 @@ class ProperOrderBook {
               deleteRangeMin = currentBidPrice;
             }
             currentItem.detach();
+            this.bidCount--;
           } else {
             currentBid.lastSizeTaken = ask.sizeRemaining;
             currentBid.lastValueTaken = askValueRemaining;
@@ -192,6 +199,7 @@ class ProperOrderBook {
     newItem.order = order;
     priceOrderLinkedList.append(newItem);
     this.orderItemMap.set(order.id, newItem);
+    this.askCount++;
   }
 
   _addBid(bid) {
@@ -264,6 +272,7 @@ class ProperOrderBook {
               deleteRangeMax = currentAskPrice;
             }
             currentItem.detach();
+            this.askCount--;
           } else {
             currentAsk.lastSizeTaken = bidSizeRemaining;
             currentAsk.lastValueTaken = bid.valueRemaining;
@@ -296,6 +305,7 @@ class ProperOrderBook {
     newItem.order = order;
     priceOrderLinkedList.append(newItem);
     this.orderItemMap.set(order.id, newItem);
+    this.bidCount++;
   }
 
   _getSimpleOrderIterator(orderListIterator) {
