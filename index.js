@@ -122,12 +122,10 @@ class ProperOrderBook {
       ask.lastValueTaken = 0;
     }
 
-    let result = {
-      taker: ask,
-      makers: [],
-      takeSize: 0,
-      takeValue: 0
-    };
+    let taker = ask;
+    let makers = [];
+    let takeSize = 0;
+    let takeValue = 0;
     let highestBid = this.getMaxBid();
     if (
       ask.type === 'limit' &&
@@ -173,9 +171,9 @@ class ProperOrderBook {
             currentBid.valueRemaining -= askValueRemaining;
             ask.sizeRemaining = 0;
           }
-          result.makers.push(currentBid);
-          result.takeSize += currentBid.lastValueTaken / currentBid.price;
-          result.takeValue += currentBid.lastValueTaken;
+          makers.push(currentBid);
+          takeSize += currentBid.lastValueTaken / currentBid.price;
+          takeValue += currentBid.lastValueTaken;
           currentItem = nextItem;
         }
       }
@@ -186,7 +184,12 @@ class ProperOrderBook {
         this._insertAsk(ask);
       }
     }
-    return result;
+    return {
+      taker: {...taker, order: taker},
+      makers: makers.map(maker => ({...maker, order: maker})),
+      takeSize,
+      takeValue
+    };
   }
 
   _insertAsk(order) {
@@ -228,12 +231,10 @@ class ProperOrderBook {
       bid.lastValueTaken = 0;
     }
 
-    let result = {
-      taker: bid,
-      makers: [],
-      takeSize: 0,
-      takeValue: 0
-    };
+    let taker = bid;
+    let makers = [];
+    let takeSize = 0;
+    let takeValue = 0;
     let lowestAsk = this.getMinAsk();
     if (
       bid.type === 'limit' &&
@@ -279,9 +280,9 @@ class ProperOrderBook {
             currentAsk.sizeRemaining -= bidSizeRemaining;
             bid.valueRemaining = 0;
           }
-          result.makers.push(currentAsk);
-          result.takeSize += currentAsk.lastSizeTaken;
-          result.takeValue += currentAsk.lastSizeTaken * currentAsk.price;
+          makers.push(currentAsk);
+          takeSize += currentAsk.lastSizeTaken;
+          takeValue += currentAsk.lastSizeTaken * currentAsk.price;
           currentItem = nextItem;
         }
       }
@@ -292,7 +293,12 @@ class ProperOrderBook {
         this._insertBid(bid);
       }
     }
-    return result;
+    return {
+      taker: {...taker, order: taker},
+      makers: makers.map(maker => ({...maker, order: maker})),
+      takeSize,
+      takeValue
+    };
   }
 
   _insertBid(order) {
