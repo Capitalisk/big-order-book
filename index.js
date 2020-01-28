@@ -122,7 +122,6 @@ class ProperOrderBook {
       ask.lastValueTaken = 0;
     }
 
-    let taker = ask;
     let makers = [];
     let takeSize = 0;
     let takeValue = 0;
@@ -185,7 +184,7 @@ class ProperOrderBook {
       }
     }
     return {
-      taker: {...taker, order: taker},
+      taker: {...ask, order: ask},
       makers: makers.map(maker => ({...maker, order: maker})),
       takeSize,
       takeValue
@@ -231,7 +230,6 @@ class ProperOrderBook {
       bid.lastValueTaken = 0;
     }
 
-    let taker = bid;
     let makers = [];
     let takeSize = 0;
     let takeValue = 0;
@@ -294,7 +292,7 @@ class ProperOrderBook {
       }
     }
     return {
-      taker: {...taker, order: taker},
+      taker: {...bid, order: bid},
       makers: makers.map(maker => ({...maker, order: maker})),
       takeSize,
       takeValue
