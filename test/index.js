@@ -588,6 +588,47 @@ describe('ProperOrderBook unit tests', async () => {
     });
   });
 
+  describe('#get', async () => {
+    it('should support fetching orders by id', async () => {
+      orderBook.add({
+        id: `ask0`,
+        type: 'limit',
+        price: .5,
+        targetChain: 'lsk',
+        targetWalletAddress: '22245678912345678222L',
+        senderId: '11111111111222222222L',
+        side: 'ask',
+        size: 100
+      });
+      orderBook.add({
+        id: `bid0`,
+        type: 'limit',
+        price: .4,
+        targetChain: 'clsk',
+        targetWalletAddress: '22245678912345678222L',
+        senderId: '11111111111222222222L',
+        side: 'bid',
+        value: 100
+      });
+
+      result = orderBook.get('ask1');
+      assert(result === undefined);
+
+      result = orderBook.get('bid1');
+      assert(result === undefined);
+
+      result = orderBook.get('ask0');
+      assert(result != null);
+      assert(result.type === 'limit');
+      assert(result.price === .5);
+
+      result = orderBook.get('bid0');
+      assert(result != null);
+      assert(result.type === 'limit');
+      assert(result.price === .4);
+    });
+  });
+
   describe('#remove', async () => {
     beforeEach(async () => {
       orderBook.add({
@@ -661,6 +702,106 @@ describe('ProperOrderBook unit tests', async () => {
       let allBids = [...orderBook.getBidIteratorFromMin()];
       assert(orderBook.askCount === allAsks.length);
       assert(orderBook.bidCount === allBids.length);
+    });
+  });
+
+  describe('#findAsks', async () => {
+    beforeEach(async () => {
+      for (let i = 100; i >= 0; i--) {
+        orderBook.add({
+          id: `ask${i}`,
+          type: 'limit',
+          price: (i + 1) / 100,
+          targetChain: 'lsk',
+          targetWalletAddress: '22245678912345678222L',
+          senderId: '11111111111222222222L',
+          side: 'ask',
+          size: (i + 1) * 10
+        });
+      }
+
+      orderBook.add({
+        id: 'bid0',
+        type: 'limit',
+        price: .0001,
+        targetChain: 'clsk',
+        targetWalletAddress: '22245678912345678222L',
+        senderId: '11111111111222222222L',
+        side: 'bid',
+        value: 10
+      });
+    });
+
+    it('should iterate over ask orders in ascending order starting from the specified price', async () => {
+      let iterator = orderBook.findAsks(0.5).asc;
+      let prevAsk;
+      for (let ask of iterator) {
+        if (prevAsk) {
+          assert(ask.price >= prevAsk.price);
+        }
+        prevAsk = ask;
+      }
+    });
+
+    it('should iterate over ask orders in descending order starting from the specified price', async () => {
+      let iterator = orderBook.findAsks(0.5).desc;
+      let prevAsk;
+      for (let ask of iterator) {
+        if (prevAsk) {
+          assert(ask.price <= prevAsk.price);
+        }
+        prevAsk = ask;
+      }
+    });
+  });
+
+  describe('#findBids', async () => {
+    beforeEach(async () => {
+      for (let i = 100; i >= 0; i--) {
+        orderBook.add({
+          id: `bid${i}`,
+          type: 'limit',
+          price: (i + 1) / 100,
+          targetChain: 'clsk',
+          targetWalletAddress: '22245678912345678222L',
+          senderId: '11111111111222222222L',
+          side: 'bid',
+          value: (i + 1) * 10
+        });
+      }
+
+      orderBook.add({
+        id: 'ask0',
+        type: 'limit',
+        price: 100,
+        targetChain: 'lsk',
+        targetWalletAddress: '22245678912345678222L',
+        senderId: '11111111111222222222L',
+        side: 'ask',
+        size: 10
+      });
+    });
+
+    it('should iterate over bid orders in ascending order starting from the specified price', async () => {
+      let iterator = orderBook.findBids(0.5).asc;
+      let prevBid;
+      for (let bid of iterator) {
+        if (prevBid) {
+          assert(bid.price >= prevBid.price);
+        }
+        prevBid = bid;
+      }
+    });
+
+    it('should iterate over bid orders in descending order starting from the specified price', async () => {
+      let iterator = orderBook.findBids(0.5).desc;
+      let prevBid;
+      for (let bid of iterator) {
+        if (prevBid) {
+          assert(bid.price <= prevBid.price);
+        }
+        prevBid = bid;
+      }
     });
   });
 

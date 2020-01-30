@@ -27,6 +27,30 @@ class ProperOrderBook {
     return this.orderItemMap.has(orderId);
   }
 
+  get(orderId) {
+    let item = this.orderItemMap.get(orderId);
+    if (!item) {
+      return undefined;
+    }
+    return item.order;
+  }
+
+  findBids(price) {
+    let result = this.bidList.findEntries(price);
+    return {
+      asc: this._getSimpleOrderIterator(result.asc),
+      desc: this._getSimpleOrderIterator(result.desc),
+    }
+  }
+
+  findAsks(price) {
+    let result = this.askList.findEntries(price);
+    return {
+      asc: this._getSimpleOrderIterator(result.asc),
+      desc: this._getSimpleOrderIterator(result.desc),
+    }
+  }
+
   remove(orderId) {
     let orderItem = this.orderItemMap.get(orderId);
 
