@@ -2,7 +2,6 @@ const ProperSkipList = require('proper-skip-list');
 const LinkedList = require('linked-list');
 
 class ProperOrderBook {
-
   constructor() {
     this.orderItemMap = new Map();
     this.askList = new ProperSkipList({updateLength: false});
