@@ -207,8 +207,8 @@ class ProperOrderBook {
       }
     }
     return {
-      taker: {...ask, order: ask},
-      makers: makers.map(maker => ({...maker, order: maker})),
+      taker: {...ask},
+      makers: makers.map(maker => ({...maker})),
       takeSize,
       takeValue
     };
@@ -315,8 +315,8 @@ class ProperOrderBook {
       }
     }
     return {
-      taker: {...bid, order: bid},
-      makers: makers.map(maker => ({...maker, order: maker})),
+      taker: {...bid},
+      makers: makers.map(maker => ({...maker})),
       takeSize,
       takeValue
     };
