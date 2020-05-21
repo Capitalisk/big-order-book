@@ -25,5 +25,8 @@
   "dependencies": {
     "linked-list": "^2.1.0",
     "proper-skip-list": "^4.0.1"
+  },
+  "devDependencies": {
+    "mocha": "^7.1.2"
   }
 }
