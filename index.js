@@ -241,7 +241,7 @@ class ProperOrderBook {
     let newItem = new LinkedList.Item();
     newItem.order = order;
     priceOrderLinkedList.append(newItem);
-    priceOrderLinkedList.sizeRemaining += order.size;
+    priceOrderLinkedList.sizeRemaining += order.sizeRemaining;
     this.orderItemMap.set(order.id, newItem);
     this.askCount++;
   }
@@ -352,7 +352,7 @@ class ProperOrderBook {
     let newItem = new LinkedList.Item();
     newItem.order = order;
     priceOrderLinkedList.append(newItem);
-    priceOrderLinkedList.valueRemaining += order.value;
+    priceOrderLinkedList.valueRemaining += order.valueRemaining;
     this.orderItemMap.set(order.id, newItem);
     this.bidCount++;
   }
