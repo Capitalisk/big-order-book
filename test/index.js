@@ -977,7 +977,7 @@ describe('ProperOrderBook unit tests', async () => {
       }
 
       orderBook.add({
-        id: `ask-extra`,
+        id: 'ask-extra',
         type: 'limit',
         price: .2,
         targetChain: 'lsk',
@@ -1036,7 +1036,7 @@ describe('ProperOrderBook unit tests', async () => {
       }
 
       orderBook.add({
-        id: `ask-extra`,
+        id: 'ask-extra',
         type: 'limit',
         price: .2,
         targetChain: 'lsk',
@@ -1089,16 +1089,31 @@ describe('ProperOrderBook unit tests', async () => {
       }
     });
 
-    it('should subtract volume', async () => {
+    it('should subtract volume partially', async () => {
+      orderBook.remove('ask19');
       let iterator = orderBook.getAskLevelIteratorFromMax();
       let count = 0;
       for (let askLevel of iterator) {
-        if (askLevel.price === .03) {
+        if (askLevel.price === .2) {
+          assert(Math.floor(askLevel.sizeRemaining * 1000) / 1000 === 2000);
+        } else if (askLevel.price === .03) {
           assert(Math.floor(askLevel.sizeRemaining * 1000) / 1000 === 13.333);
         }
         count++;
       }
       assert(count === 98);
+    });
+
+    it('should subtract volume completely', async () => {
+      orderBook.remove('ask19');
+      orderBook.remove('ask-extra');
+      let iterator = orderBook.getAskLevelIteratorFromMax();
+      for (let askLevel of iterator) {
+        if (askLevel.price === .2) {
+          // Should not reach here.
+          assert(false);
+        }
+      }
     });
   });
 
@@ -1118,7 +1133,7 @@ describe('ProperOrderBook unit tests', async () => {
       }
 
       orderBook.add({
-        id: `bid-extra`,
+        id: 'bid-extra',
         type: 'limit',
         price: .3,
         targetChain: 'clsk',
@@ -1171,16 +1186,31 @@ describe('ProperOrderBook unit tests', async () => {
       }
     });
 
-    it('should subtract volume', async () => {
+    it('should subtract volume partially', async () => {
+      orderBook.remove('bid-extra');
       let iterator = orderBook.getBidLevelIteratorFromMin();
       let count = 0;
       for (let bidLevel of iterator) {
-        if (bidLevel.price === .9) {
+        if (bidLevel.price === .3) {
+          assert(bidLevel.valueRemaining === 300);
+        } else if (bidLevel.price === .9) {
           assert(bidLevel.valueRemaining === 810);
         }
         count++;
       }
       assert(count === 90);
+    });
+
+    it('should subtract volume completely', async () => {
+      orderBook.remove('bid29');
+      orderBook.remove('bid-extra');
+      let iterator = orderBook.getBidLevelIteratorFromMin();
+      for (let bidLevel of iterator) {
+        if (bidLevel.price === .3) {
+          // Should not reach here.
+          assert(false);
+        }
+      }
     });
   });
 
@@ -1200,7 +1230,7 @@ describe('ProperOrderBook unit tests', async () => {
       }
 
       orderBook.add({
-        id: `bid-extra`,
+        id: 'bid-extra',
         type: 'limit',
         price: .3,
         targetChain: 'clsk',

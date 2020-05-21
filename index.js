@@ -64,11 +64,15 @@ class ProperOrderBook {
       this.askCount--;
       if (priceOrderLinkedList.size <= 0) {
         this.askList.delete(order.price);
+      } else {
+        priceOrderLinkedList.sizeRemaining -= order.sizeRemaining;
       }
     } else {
       this.bidCount--;
       if (priceOrderLinkedList.size <= 0) {
         this.bidList.delete(order.price);
+      } else {
+        priceOrderLinkedList.valueRemaining -= order.valueRemaining;
       }
     }
     this.orderItemMap.delete(orderId);
