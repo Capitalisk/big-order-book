@@ -807,7 +807,7 @@ describe('ProperOrderBook unit tests', async () => {
 
   describe('#getAskIteratorFromMin', async () => {
     beforeEach(async () => {
-      for (let i = 100; i >= 0; i--) {
+      for (let i = 99; i >= 0; i--) {
         orderBook.add({
           id: `ask${i}`,
           type: 'limit',
@@ -922,7 +922,7 @@ describe('ProperOrderBook unit tests', async () => {
     });
   });
 
-  describe('#getAskIteratorFromMax', async () => {
+  describe('#getBidIteratorFromMax', async () => {
     beforeEach(async () => {
       for (let i = 0; i < 100; i++) {
         orderBook.add({
@@ -957,6 +957,291 @@ describe('ProperOrderBook unit tests', async () => {
           assert(bid.price <= prevBid.price);
         }
         prevBid = bid;
+      }
+    });
+  });
+
+  describe('#getAskLevelIteratorFromMin', async () => {
+    beforeEach(async () => {
+      for (let i = 99; i >= 0; i--) {
+        orderBook.add({
+          id: `ask${i}`,
+          type: 'limit',
+          price: (i + 1) / 100,
+          targetChain: 'lsk',
+          targetWalletAddress: '22245678912345678222L',
+          senderId: '11111111111222222222L',
+          side: 'ask',
+          size: (i + 1) * 10
+        });
+      }
+
+      orderBook.add({
+        id: `ask-extra`,
+        type: 'limit',
+        price: .2,
+        targetChain: 'lsk',
+        targetWalletAddress: '22245678912345678222L',
+        senderId: '11111111111222222222L',
+        side: 'ask',
+        size: 10000
+      });
+
+      orderBook.add({
+        id: 'bid0',
+        type: 'limit',
+        price: .0001,
+        targetChain: 'clsk',
+        targetWalletAddress: '22245678912345678222L',
+        senderId: '11111111111222222222L',
+        side: 'bid',
+        value: 10
+      });
+    });
+
+    it('should iterate over ask levels in ascending order starting from the min price', async () => {
+      let iterator = orderBook.getAskLevelIteratorFromMin();
+      let prevAskLevel;
+      for (let askLevel of iterator) {
+        if (prevAskLevel) {
+          assert(askLevel.price >= prevAskLevel.price);
+        }
+        prevAskLevel = askLevel;
+      }
+    });
+
+    it('should combine volumes from multiple orders', async () => {
+      let iterator = orderBook.getAskLevelIteratorFromMax();
+      for (let askLevel of iterator) {
+        if (askLevel.price === .2) {
+          assert(askLevel.sizeRemaining === 10200);
+        }
+      }
+    });
+  });
+
+  describe('#getAskLevelIteratorFromMax', async () => {
+    beforeEach(async () => {
+      for (let i = 0; i < 100; i++) {
+        orderBook.add({
+          id: `ask${i}`,
+          type: 'limit',
+          price: (i + 1) / 100,
+          targetChain: 'lsk',
+          targetWalletAddress: '22245678912345678222L',
+          senderId: '11111111111222222222L',
+          side: 'ask',
+          size: (i + 1) * 10
+        });
+      }
+
+      orderBook.add({
+        id: `ask-extra`,
+        type: 'limit',
+        price: .2,
+        targetChain: 'lsk',
+        targetWalletAddress: '22245678912345678222L',
+        senderId: '11111111111222222222L',
+        side: 'ask',
+        size: 2000
+      });
+
+      orderBook.add({
+        id: 'bid0',
+        type: 'limit',
+        price: .0001,
+        targetChain: 'clsk',
+        targetWalletAddress: '22245678912345678222L',
+        senderId: '11111111111222222222L',
+        side: 'bid',
+        value: 10
+      });
+
+      orderBook.add({
+        id: 'bid1',
+        type: 'limit',
+        price: 1,
+        targetChain: 'clsk',
+        targetWalletAddress: '22245678912345678222L',
+        senderId: '11111111111222222222L',
+        side: 'bid',
+        value: 1
+      });
+    });
+
+    it('should iterate over ask levels in descending order starting from the max price', async () => {
+      let iterator = orderBook.getAskLevelIteratorFromMax();
+      let prevAskLevel;
+      for (let askLevel of iterator) {
+        if (prevAskLevel) {
+          assert(askLevel.price <= prevAskLevel.price);
+        }
+        prevAskLevel = askLevel;
+      }
+    });
+
+    it('should combine volumes from multiple orders', async () => {
+      let iterator = orderBook.getAskLevelIteratorFromMax();
+      for (let askLevel of iterator) {
+        if (askLevel.price === .2) {
+          assert(askLevel.sizeRemaining === 2200);
+        }
+      }
+    });
+
+    it('should subtract volume', async () => {
+      let iterator = orderBook.getAskLevelIteratorFromMax();
+      let count = 0;
+      for (let askLevel of iterator) {
+        if (askLevel.price === .03) {
+          assert(Math.floor(askLevel.sizeRemaining * 1000) / 1000 === 13.333);
+        }
+        count++;
+      }
+      assert(count === 98);
+    });
+  });
+
+  describe('#getBidLevelIteratorFromMin', async () => {
+    beforeEach(async () => {
+      for (let i = 99; i >= 0; i--) {
+        orderBook.add({
+          id: `bid${i}`,
+          type: 'limit',
+          price: (i + 1) / 100,
+          targetChain: 'clsk',
+          targetWalletAddress: '22245678912345678222L',
+          senderId: '11111111111222222222L',
+          side: 'bid',
+          value: (i + 1) * 10
+        });
+      }
+
+      orderBook.add({
+        id: `bid-extra`,
+        type: 'limit',
+        price: .3,
+        targetChain: 'clsk',
+        targetWalletAddress: '22245678912345678222L',
+        senderId: '11111111111222222222L',
+        side: 'bid',
+        value: 3000
+      });
+
+      orderBook.add({
+        id: 'ask0',
+        type: 'limit',
+        price: 100,
+        targetChain: 'lsk',
+        targetWalletAddress: '22245678912345678222L',
+        senderId: '11111111111222222222L',
+        side: 'ask',
+        size: 10
+      });
+
+      orderBook.add({
+        id: 'ask1',
+        type: 'limit',
+        price: .01,
+        targetChain: 'lsk',
+        targetWalletAddress: '22245678912345678222L',
+        senderId: '11111111111222222222L',
+        side: 'ask',
+        size: 10100
+      });
+    });
+
+    it('should iterate over bid level in ascending order starting from the min price', async () => {
+      let iterator = orderBook.getBidLevelIteratorFromMin();
+      let prevBidLevel;
+      for (let bidLevel of iterator) {
+        if (prevBidLevel) {
+          assert(bidLevel.price >= prevBidLevel.price);
+        }
+        prevBidLevel = bidLevel;
+      }
+    });
+
+    it('should combine volumes from multiple orders', async () => {
+      let iterator = orderBook.getBidLevelIteratorFromMin();
+      for (let bidLevel of iterator) {
+        if (bidLevel.price === .3) {
+          assert(bidLevel.valueRemaining === 3300);
+        }
+      }
+    });
+
+    it('should subtract volume', async () => {
+      let iterator = orderBook.getBidLevelIteratorFromMin();
+      let count = 0;
+      for (let bidLevel of iterator) {
+        if (bidLevel.price === .9) {
+          assert(bidLevel.valueRemaining === 810);
+        }
+        count++;
+      }
+      assert(count === 90);
+    });
+  });
+
+  describe('#getBidLevelIteratorFromMax', async () => {
+    beforeEach(async () => {
+      for (let i = 0; i < 100; i++) {
+        orderBook.add({
+          id: `bid${i}`,
+          type: 'limit',
+          price: (i + 1) / 100,
+          targetChain: 'clsk',
+          targetWalletAddress: '22245678912345678222L',
+          senderId: '11111111111222222222L',
+          side: 'bid',
+          value: (i + 1) * 10
+        });
+      }
+
+      orderBook.add({
+        id: `bid-extra`,
+        type: 'limit',
+        price: .3,
+        targetChain: 'clsk',
+        targetWalletAddress: '22245678912345678222L',
+        senderId: '11111111111222222222L',
+        side: 'bid',
+        value: 10000
+      });
+
+      orderBook.add({
+        id: 'ask0',
+        type: 'limit',
+        price: 100,
+        targetChain: 'lsk',
+        targetWalletAddress: '22245678912345678222L',
+        senderId: '11111111111222222222L',
+        side: 'ask',
+        size: 10
+      });
+    });
+
+    it('should iterate over bid levels in ascending order starting from the max price', async () => {
+      let iterator = orderBook.getBidLevelIteratorFromMax();
+      let prevBidLevel;
+      for (let bidLevel of iterator) {
+        if (bidLevel.price === .3) {
+          assert(bidLevel.valueRemaining === 10300);
+        }
+        if (prevBidLevel) {
+          assert(bidLevel.price <= prevBidLevel.price);
+        }
+        prevBidLevel = bidLevel;
+      }
+    });
+
+    it('should combine volumes from multiple orders', async () => {
+      let iterator = orderBook.getBidLevelIteratorFromMax();
+      for (let bidLevel of iterator) {
+        if (bidLevel.price === .3) {
+          assert(bidLevel.valueRemaining === 10300);
+        }
       }
     });
   });

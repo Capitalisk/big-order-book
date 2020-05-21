@@ -111,6 +111,22 @@ class ProperOrderBook {
     return this._getSimpleOrderIterator(this.bidList.findEntriesFromMax());
   }
 
+  getAskLevelIteratorFromMin() {
+    return this._getAskPriceLevelIterator(this.askList.findEntriesFromMin());
+  }
+
+  getAskLevelIteratorFromMax() {
+    return this._getAskPriceLevelIterator(this.askList.findEntriesFromMax());
+  }
+
+  getBidLevelIteratorFromMin() {
+    return this._getBidPriceLevelIterator(this.bidList.findEntriesFromMin());
+  }
+
+  getBidLevelIteratorFromMax() {
+    return this._getBidPriceLevelIterator(this.bidList.findEntriesFromMax());
+  }
+
   clear() {
     this.askList.clear();
     this.bidList.clear();
@@ -196,6 +212,7 @@ class ProperOrderBook {
           makers.push(currentBid);
           takeSize += currentBid.lastValueTaken / currentBid.price;
           takeValue += currentBid.lastValueTaken;
+          priceOrderLinkedList.valueRemaining -= currentBid.lastValueTaken;
           currentItem = nextItem;
         }
       }
@@ -219,10 +236,12 @@ class ProperOrderBook {
     if (!priceOrderLinkedList) {
       priceOrderLinkedList = new LinkedList();
       this.askList.upsert(order.price, priceOrderLinkedList);
+      priceOrderLinkedList.sizeRemaining = 0;
     }
     let newItem = new LinkedList.Item();
     newItem.order = order;
     priceOrderLinkedList.append(newItem);
+    priceOrderLinkedList.sizeRemaining += order.size;
     this.orderItemMap.set(order.id, newItem);
     this.askCount++;
   }
@@ -304,6 +323,7 @@ class ProperOrderBook {
           makers.push(currentAsk);
           takeSize += currentAsk.lastSizeTaken;
           takeValue += currentAsk.lastSizeTaken * currentAsk.price;
+          priceOrderLinkedList.sizeRemaining -= currentAsk.lastSizeTaken;
           currentItem = nextItem;
         }
       }
@@ -327,10 +347,12 @@ class ProperOrderBook {
     if (!priceOrderLinkedList) {
       priceOrderLinkedList = new LinkedList();
       this.bidList.upsert(order.price, priceOrderLinkedList);
+      priceOrderLinkedList.valueRemaining = 0;
     }
     let newItem = new LinkedList.Item();
     newItem.order = order;
     priceOrderLinkedList.append(newItem);
+    priceOrderLinkedList.valueRemaining += order.value;
     this.orderItemMap.set(order.id, newItem);
     this.bidCount++;
   }
@@ -360,7 +382,53 @@ class ProperOrderBook {
         };
       },
       [Symbol.iterator]: function () { return this; }
-    }
+    };
+  }
+
+  _getAskPriceLevelIterator(orderListIterator) {
+    return {
+      next: function () {
+        let {value, done} = orderListIterator.next();
+        let [price, priceOrderLinkedList] = value;
+        let result;
+        if (priceOrderLinkedList == null) {
+          result = undefined;
+        } else {
+          result = {
+            price,
+            sizeRemaining: priceOrderLinkedList.sizeRemaining
+          };
+        }
+        return {
+          value: result,
+          done
+        };
+      },
+      [Symbol.iterator]: function () { return this; }
+    };
+  }
+
+  _getBidPriceLevelIterator(orderListIterator) {
+    return {
+      next: function () {
+        let {value, done} = orderListIterator.next();
+        let [price, priceOrderLinkedList] = value;
+        let result;
+        if (priceOrderLinkedList == null) {
+          result = undefined;
+        } else {
+          result = {
+            price,
+            valueRemaining: priceOrderLinkedList.valueRemaining
+          };
+        }
+        return {
+          value: result,
+          done
+        };
+      },
+      [Symbol.iterator]: function () { return this; }
+    };
   }
 }
 
