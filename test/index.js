@@ -552,7 +552,7 @@ describe('ProperOrderBook unit tests', async () => {
 
     it('should support minimum take size', async () => {
       orderBook = new ProperOrderBook({
-        minimumPartialTakeSize: 5.1
+        minPartialTakeSize: 5.1
       });
 
       orderBook.add({
@@ -595,7 +595,7 @@ describe('ProperOrderBook unit tests', async () => {
 
     it('should support minimum take value', async () => {
       orderBook = new ProperOrderBook({
-        minimumPartialTakeValue: 5.1
+        minPartialTakeValue: 5.1
       });
 
       orderBook.add({

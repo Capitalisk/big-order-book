@@ -9,8 +9,8 @@ class ProperOrderBook {
     this.bidList = new ProperSkipList({updateLength: false});
     this.askCount = 0;
     this.bidCount = 0;
-    this.minimumPartialTakeValue = this.options.minimumPartialTakeValue || 0;
-    this.minimumPartialTakeSize = this.options.minimumPartialTakeSize || 0;
+    this.minPartialTakeValue = this.options.minPartialTakeValue || 0;
+    this.minPartialTakeSize = this.options.minPartialTakeSize || 0;
   }
 
   add(order) {
@@ -216,7 +216,7 @@ class ProperOrderBook {
             makers.push(currentBid);
           } else {
             // Only take a portion from the maker if the remaining value is greater than the minimum take value.
-            if (askValueRemaining >= this.minimumPartialTakeValue) {
+            if (askValueRemaining >= this.minPartialTakeValue) {
               currentBid.lastSizeTaken = ask.sizeRemaining;
               currentBid.lastValueTaken = askValueRemaining;
               currentBid.valueRemaining -= askValueRemaining;
@@ -334,7 +334,7 @@ class ProperOrderBook {
             makers.push(currentAsk);
           } else {
             // Only take a portion from the maker if the remaining size is greater than the minimum take size.
-            if (bidSizeRemaining >= this.minimumPartialTakeSize) {
+            if (bidSizeRemaining >= this.minPartialTakeSize) {
               currentAsk.lastSizeTaken = bidSizeRemaining;
               currentAsk.lastValueTaken = bid.valueRemaining;
               currentAsk.sizeRemaining -= bidSizeRemaining;
