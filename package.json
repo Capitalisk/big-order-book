@@ -1,6 +1,6 @@
 {
   "name": "proper-order-book",
-  "version": "1.4.2",
+  "version": "1.5.0",
   "description": "An efficient order book which supports market and limit orders with fast insertion and search.",
   "main": "index.js",
   "scripts": {
