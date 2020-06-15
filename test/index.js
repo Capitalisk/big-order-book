@@ -549,6 +549,92 @@ describe('ProperOrderBook unit tests', async () => {
       assert(orderBook.askCount === allAsks.length);
       assert(orderBook.bidCount === allBids.length);
     });
+
+    it('should support minimum take size', async () => {
+      orderBook = new ProperOrderBook({
+        minimumPartialTakeSize: 5.1
+      });
+
+      orderBook.add({
+        id: `ask0`,
+        type: 'limit',
+        price: 2,
+        targetChain: 'lsk',
+        targetWalletAddress: '22245678912345678222L',
+        senderId: '11111111111222222222L',
+        side: 'ask',
+        size: 100
+      });
+      orderBook.add({
+        id: `ask1`,
+        type: 'limit',
+        price: 1,
+        targetChain: 'lsk',
+        targetWalletAddress: '22245678912345678222L',
+        senderId: '11111111111222222222L',
+        side: 'ask',
+        size: 100
+      });
+      result = orderBook.add({
+        id: `bid0`,
+        type: 'market',
+        targetChain: 'clsk',
+        targetWalletAddress: '22245678912345678222L',
+        senderId: '11111111111222222222L',
+        side: 'bid',
+        value: 110
+      });
+
+      assert(result.takeSize === 100);
+      assert(result.takeValue === 100);
+      assert(result.makers.length === 1);
+      assert(result.makers[0].lastSizeTaken === 100);
+      assert(result.makers[0].lastValueTaken === 100);
+      assert(result.makers[0].sizeRemaining === 0);
+    });
+
+    it('should support minimum take value', async () => {
+      orderBook = new ProperOrderBook({
+        minimumPartialTakeValue: 5.1
+      });
+
+      orderBook.add({
+        id: `bid0`,
+        type: 'limit',
+        price: 1,
+        targetChain: 'clsk',
+        targetWalletAddress: '22245678912345678222L',
+        senderId: '11111111111222222222L',
+        side: 'bid',
+        value: 100
+      });
+      orderBook.add({
+        id: `bid1`,
+        type: 'limit',
+        price: .5,
+        targetChain: 'clsk',
+        targetWalletAddress: '22245678912345678222L',
+        senderId: '11111111111222222222L',
+        side: 'bid',
+        value: 100
+      });
+      result = orderBook.add({
+        id: `ask0`,
+        type: 'market',
+        targetChain: 'lsk',
+        targetWalletAddress: '22245678912345678222L',
+        senderId: '11111111111222222222L',
+        side: 'ask',
+        size: 110
+      });
+
+      assert(result.takeSize === 100);
+      assert(result.takeValue === 100);
+      assert(result.makers.length === 1);
+      assert(result.makers[0].lastSizeTaken === 100);
+      assert(result.makers[0].lastValueTaken === 100);
+      assert(result.makers[0].valueRemaining === 0);
+    });
   });
 
   describe('#has', async () => {

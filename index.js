@@ -2,12 +2,15 @@ const ProperSkipList = require('proper-skip-list');
 const LinkedList = require('linked-list');
 
 class ProperOrderBook {
-  constructor() {
+  constructor(options) {
+    this.options = options || {};
     this.orderItemMap = new Map();
     this.askList = new ProperSkipList({updateLength: false});
     this.bidList = new ProperSkipList({updateLength: false});
     this.askCount = 0;
     this.bidCount = 0;
+    this.minimumPartialTakeValue = this.options.minimumPartialTakeValue || 0;
+    this.minimumPartialTakeSize = this.options.minimumPartialTakeSize || 0;
   }
 
   add(order) {
@@ -207,16 +210,23 @@ class ProperOrderBook {
             }
             currentItem.detach();
             this.bidCount--;
+            takeSize += currentBid.lastValueTaken / currentBid.price;
+            takeValue += currentBid.lastValueTaken;
+            priceOrderLinkedList.valueRemaining -= currentBid.lastValueTaken;
+            makers.push(currentBid);
           } else {
-            currentBid.lastSizeTaken = ask.sizeRemaining;
-            currentBid.lastValueTaken = askValueRemaining;
-            currentBid.valueRemaining -= askValueRemaining;
+            // Only take a portion from the maker if the remaining value is greater than the minimum take value.
+            if (askValueRemaining >= this.minimumPartialTakeValue) {
+              currentBid.lastSizeTaken = ask.sizeRemaining;
+              currentBid.lastValueTaken = askValueRemaining;
+              currentBid.valueRemaining -= askValueRemaining;
+              takeSize += currentBid.lastValueTaken / currentBid.price;
+              takeValue += currentBid.lastValueTaken;
+              priceOrderLinkedList.valueRemaining -= currentBid.lastValueTaken;
+              makers.push(currentBid);
+            }
             ask.sizeRemaining = 0;
           }
-          makers.push(currentBid);
-          takeSize += currentBid.lastValueTaken / currentBid.price;
-          takeValue += currentBid.lastValueTaken;
-          priceOrderLinkedList.valueRemaining -= currentBid.lastValueTaken;
           currentItem = nextItem;
         }
       }
@@ -318,16 +328,23 @@ class ProperOrderBook {
             }
             currentItem.detach();
             this.askCount--;
+            takeSize += currentAsk.lastSizeTaken;
+            takeValue += currentAsk.lastSizeTaken * currentAsk.price;
+            priceOrderLinkedList.sizeRemaining -= currentAsk.lastSizeTaken;
+            makers.push(currentAsk);
           } else {
-            currentAsk.lastSizeTaken = bidSizeRemaining;
-            currentAsk.lastValueTaken = bid.valueRemaining;
-            currentAsk.sizeRemaining -= bidSizeRemaining;
+            // Only take a portion from the maker if the remaining size is greater than the minimum take size.
+            if (bidSizeRemaining >= this.minimumPartialTakeSize) {
+              currentAsk.lastSizeTaken = bidSizeRemaining;
+              currentAsk.lastValueTaken = bid.valueRemaining;
+              currentAsk.sizeRemaining -= bidSizeRemaining;
+              takeSize += currentAsk.lastSizeTaken;
+              takeValue += currentAsk.lastSizeTaken * currentAsk.price;
+              priceOrderLinkedList.sizeRemaining -= currentAsk.lastSizeTaken;
+              makers.push(currentAsk);
+            }
             bid.valueRemaining = 0;
           }
-          makers.push(currentAsk);
-          takeSize += currentAsk.lastSizeTaken;
-          takeValue += currentAsk.lastSizeTaken * currentAsk.price;
-          priceOrderLinkedList.sizeRemaining -= currentAsk.lastSizeTaken;
           currentItem = nextItem;
         }
       }
