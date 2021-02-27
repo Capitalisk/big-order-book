@@ -149,7 +149,7 @@ class BigOrderBook {
   }
 
   _convertValueToSize(value, price) {
-    return (value * BigInt(this.pricePrecisionFactor)) / BigInt(Math.floor(price * this.pricePrecisionFactor));
+    return value * BigInt(this.pricePrecisionFactor) / BigInt(Math.floor(price * this.pricePrecisionFactor));
   }
 
   _addAsk(ask) {
