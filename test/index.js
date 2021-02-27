@@ -1,13 +1,15 @@
 const assert = require('assert');
-const ProperOrderBook = require('../');
+const BigOrderBook = require('../');
 
-describe('ProperOrderBook unit tests', async () => {
+describe('BigOrderBook unit tests', async () => {
   let orderBook;
   let result;
   let error;
 
   beforeEach(async () => {
-    orderBook = new ProperOrderBook();
+    orderBook = new BigOrderBook({
+      priceDecimalPrecision: 4
+    });
   });
 
   describe('#add', async () => {
@@ -105,12 +107,12 @@ describe('ProperOrderBook unit tests', async () => {
         value: 40
       });
 
-      assert(result.takeSize === 80);
-      assert(result.takeValue === 40);
+      assert(result.takeSize === 80n);
+      assert(result.takeValue === 40n);
       assert(result.makers.length === 1);
-      assert(result.makers[0].lastSizeTaken === 80);
-      assert(result.makers[0].lastValueTaken === 40);
-      assert(result.makers[0].sizeRemaining === 20);
+      assert(result.makers[0].lastSizeTaken === 80n);
+      assert(result.makers[0].lastValueTaken === 40n);
+      assert(result.makers[0].sizeRemaining === 20n);
 
       let allAsks = [...orderBook.getAskIteratorFromMin()];
       let allBids = [...orderBook.getBidIteratorFromMin()];
@@ -150,15 +152,15 @@ describe('ProperOrderBook unit tests', async () => {
         value: 110
       });
 
-      assert(result.takeSize === 200);
-      assert(result.takeValue === 110);
+      assert(result.takeSize === 200n);
+      assert(result.takeValue === 110n);
       assert(result.makers.length === 2);
-      assert(result.makers[0].lastSizeTaken === 100);
-      assert(result.makers[0].lastValueTaken === 50);
-      assert(result.makers[0].sizeRemaining === 0);
-      assert(result.makers[1].lastSizeTaken === 100);
-      assert(result.makers[1].lastValueTaken === 60);
-      assert(result.makers[1].sizeRemaining === 0);
+      assert(result.makers[0].lastSizeTaken === 100n);
+      assert(result.makers[0].lastValueTaken === 50n);
+      assert(result.makers[0].sizeRemaining === 0n);
+      assert(result.makers[1].lastSizeTaken === 100n);
+      assert(result.makers[1].lastValueTaken === 60n);
+      assert(result.makers[1].sizeRemaining === 0n);
 
       let allAsks = [...orderBook.getAskIteratorFromMin()];
       let allBids = [...orderBook.getBidIteratorFromMin()];
@@ -198,21 +200,21 @@ describe('ProperOrderBook unit tests', async () => {
         value: 160
       });
 
-      assert(result.takeSize === 200);
-      assert(result.takeValue === 110);
+      assert(result.takeSize === 200n);
+      assert(result.takeValue === 110n);
       assert(result.makers.length === 2);
-      assert(result.makers[0].lastSizeTaken === 100);
-      assert(result.makers[0].lastValueTaken === 50);
-      assert(result.makers[0].sizeRemaining === 0);
-      assert(result.makers[1].lastSizeTaken === 100);
-      assert(result.makers[1].lastValueTaken === 60);
-      assert(result.makers[1].sizeRemaining === 0);
+      assert(result.makers[0].lastSizeTaken === 100n);
+      assert(result.makers[0].lastValueTaken === 50n);
+      assert(result.makers[0].sizeRemaining === 0n);
+      assert(result.makers[1].lastSizeTaken === 100n);
+      assert(result.makers[1].lastValueTaken === 60n);
+      assert(result.makers[1].sizeRemaining === 0n);
 
       let iterator = orderBook.getBidIteratorFromMax();
       let bid = iterator.next().value;
-      assert(bid.valueRemaining === 50);
-      assert(bid.lastSizeTaken === 0);
-      assert(bid.lastValueTaken === 0);
+      assert(bid.valueRemaining === 50n);
+      assert(bid.lastSizeTaken === 0n);
+      assert(bid.lastValueTaken === 0n);
       let lastEntry = iterator.next();
       assert(lastEntry.value === undefined);
       assert(lastEntry.done);
@@ -254,21 +256,21 @@ describe('ProperOrderBook unit tests', async () => {
         side: 'ask',
         size: 250
       });
-      assert(result.takeSize === 200);
-      assert(result.takeValue === 110);
+      assert(result.takeSize === 200n);
+      assert(result.takeValue === 110n);
       assert(result.makers.length === 2);
-      assert(result.makers[0].lastSizeTaken === 100);
-      assert(result.makers[0].lastValueTaken === 60);
-      assert(result.makers[0].valueRemaining === 0);
-      assert(result.makers[1].lastSizeTaken === 100);
-      assert(result.makers[1].lastValueTaken === 50);
-      assert(result.makers[1].valueRemaining === 0);
+      assert(result.makers[0].lastSizeTaken === 100n);
+      assert(result.makers[0].lastValueTaken === 60n);
+      assert(result.makers[0].valueRemaining === 0n);
+      assert(result.makers[1].lastSizeTaken === 100n);
+      assert(result.makers[1].lastValueTaken === 50n);
+      assert(result.makers[1].valueRemaining === 0n);
 
       let iterator = orderBook.getAskIteratorFromMin();
       let ask = iterator.next().value;
-      assert(ask.sizeRemaining === 50);
-      assert(ask.lastSizeTaken === 0);
-      assert(ask.lastValueTaken === 0);
+      assert(ask.sizeRemaining === 50n);
+      assert(ask.lastSizeTaken === 0n);
+      assert(ask.lastValueTaken === 0n);
       let lastEntry = iterator.next();
       assert(lastEntry.value === undefined);
       assert(lastEntry.done);
@@ -489,11 +491,11 @@ describe('ProperOrderBook unit tests', async () => {
         value: 120
       });
 
-      assert(result.takeSize === 200);
-      assert(result.takeValue === 110);
-      assert(result.taker.valueRemaining === 10);
-      assert(result.taker.lastValueTaken === 0);
-      assert(result.taker.lastSizeTaken === 0);
+      assert(result.takeSize === 200n);
+      assert(result.takeValue === 110n);
+      assert(result.taker.valueRemaining === 10n);
+      assert(result.taker.lastValueTaken === 0n);
+      assert(result.taker.lastSizeTaken === 0n);
 
       assert([...orderBook.askList.findEntriesFromMin()].length === 0);
       assert([...orderBook.bidList.findEntriesFromMin()].length === 0);
@@ -535,11 +537,11 @@ describe('ProperOrderBook unit tests', async () => {
         size: 220
       });
 
-      assert(result.takeSize === 200);
-      assert(result.takeValue === 110);
-      assert(result.taker.sizeRemaining === 20);
-      assert(result.taker.lastValueTaken === 0);
-      assert(result.taker.lastSizeTaken === 0);
+      assert(result.takeSize === 200n);
+      assert(result.takeValue === 110n);
+      assert(result.taker.sizeRemaining === 20n);
+      assert(result.taker.lastValueTaken === 0n);
+      assert(result.taker.lastSizeTaken === 0n);
 
       assert([...orderBook.askList.findEntriesFromMin()].length === 0);
       assert([...orderBook.bidList.findEntriesFromMin()].length === 0);
@@ -551,8 +553,8 @@ describe('ProperOrderBook unit tests', async () => {
     });
 
     it('should support minimum take size', async () => {
-      orderBook = new ProperOrderBook({
-        minPartialTakeSize: 5.1
+      orderBook = new BigOrderBook({
+        minPartialTakeSize: 51
       });
 
       orderBook.add({
@@ -563,7 +565,7 @@ describe('ProperOrderBook unit tests', async () => {
         targetWalletAddress: '22245678912345678222L',
         senderId: '11111111111222222222L',
         side: 'ask',
-        size: 100
+        size: 1000
       });
       orderBook.add({
         id: `ask1`,
@@ -573,7 +575,7 @@ describe('ProperOrderBook unit tests', async () => {
         targetWalletAddress: '22245678912345678222L',
         senderId: '11111111111222222222L',
         side: 'ask',
-        size: 100
+        size: 1000
       });
       result = orderBook.add({
         id: `bid0`,
@@ -582,20 +584,20 @@ describe('ProperOrderBook unit tests', async () => {
         targetWalletAddress: '22245678912345678222L',
         senderId: '11111111111222222222L',
         side: 'bid',
-        value: 110
+        value: 1100
       });
 
-      assert(result.takeSize === 100);
-      assert(result.takeValue === 100);
+      assert(result.takeSize === 1000n);
+      assert(result.takeValue === 1000n);
       assert(result.makers.length === 1);
-      assert(result.makers[0].lastSizeTaken === 100);
-      assert(result.makers[0].lastValueTaken === 100);
-      assert(result.makers[0].sizeRemaining === 0);
+      assert(result.makers[0].lastSizeTaken === 1000n);
+      assert(result.makers[0].lastValueTaken === 1000n);
+      assert(result.makers[0].sizeRemaining === 0n);
     });
 
     it('should support minimum take value', async () => {
-      orderBook = new ProperOrderBook({
-        minPartialTakeValue: 5.1
+      orderBook = new BigOrderBook({
+        minPartialTakeValue: 51
       });
 
       orderBook.add({
@@ -606,7 +608,7 @@ describe('ProperOrderBook unit tests', async () => {
         targetWalletAddress: '22245678912345678222L',
         senderId: '11111111111222222222L',
         side: 'bid',
-        value: 100
+        value: 1000
       });
       orderBook.add({
         id: `bid1`,
@@ -616,7 +618,7 @@ describe('ProperOrderBook unit tests', async () => {
         targetWalletAddress: '22245678912345678222L',
         senderId: '11111111111222222222L',
         side: 'bid',
-        value: 100
+        value: 1000
       });
       result = orderBook.add({
         id: `ask0`,
@@ -625,15 +627,15 @@ describe('ProperOrderBook unit tests', async () => {
         targetWalletAddress: '22245678912345678222L',
         senderId: '11111111111222222222L',
         side: 'ask',
-        size: 110
+        size: 1100
       });
 
-      assert(result.takeSize === 100);
-      assert(result.takeValue === 100);
+      assert(result.takeSize === 1000n);
+      assert(result.takeValue === 1000n);
       assert(result.makers.length === 1);
-      assert(result.makers[0].lastSizeTaken === 100);
-      assert(result.makers[0].lastValueTaken === 100);
-      assert(result.makers[0].valueRemaining === 0);
+      assert(result.makers[0].lastSizeTaken === 1000n);
+      assert(result.makers[0].lastValueTaken === 1000n);
+      assert(result.makers[0].valueRemaining === 0n);
     });
   });
 
@@ -1100,7 +1102,7 @@ describe('ProperOrderBook unit tests', async () => {
       let iterator = orderBook.getAskLevelIteratorFromMax();
       for (let askLevel of iterator) {
         if (askLevel.price === .2) {
-          assert(askLevel.sizeRemaining === 10200);
+          assert(askLevel.sizeRemaining === 10200n);
         }
       }
     });
@@ -1117,7 +1119,7 @@ describe('ProperOrderBook unit tests', async () => {
           targetWalletAddress: '22245678912345678222L',
           senderId: '11111111111222222222L',
           side: 'ask',
-          size: (i + 1) * 10
+          size: (i + 1) * 100
         });
       }
 
@@ -1129,7 +1131,7 @@ describe('ProperOrderBook unit tests', async () => {
         targetWalletAddress: '22245678912345678222L',
         senderId: '11111111111222222222L',
         side: 'ask',
-        size: 2000
+        size: 20000
       });
 
       orderBook.add({
@@ -1140,7 +1142,7 @@ describe('ProperOrderBook unit tests', async () => {
         targetWalletAddress: '22245678912345678222L',
         senderId: '11111111111222222222L',
         side: 'bid',
-        value: 10
+        value: 100
       });
 
       orderBook.add({
@@ -1151,7 +1153,7 @@ describe('ProperOrderBook unit tests', async () => {
         targetWalletAddress: '22245678912345678222L',
         senderId: '11111111111222222222L',
         side: 'bid',
-        value: 1
+        value: 10
       });
     });
 
@@ -1170,7 +1172,7 @@ describe('ProperOrderBook unit tests', async () => {
       let iterator = orderBook.getAskLevelIteratorFromMax();
       for (let askLevel of iterator) {
         if (askLevel.price === .2) {
-          assert(askLevel.sizeRemaining === 2200);
+          assert(askLevel.sizeRemaining === 22000n);
         }
       }
     });
@@ -1181,9 +1183,9 @@ describe('ProperOrderBook unit tests', async () => {
       let count = 0;
       for (let askLevel of iterator) {
         if (askLevel.price === .2) {
-          assert(Math.floor(askLevel.sizeRemaining * 1000) / 1000 === 2000);
+          assert(askLevel.sizeRemaining === 20000n);
         } else if (askLevel.price === .03) {
-          assert(Math.floor(askLevel.sizeRemaining * 1000) / 1000 === 13.333);
+          assert(askLevel.sizeRemaining === 134n);
         }
         count++;
       }
@@ -1267,7 +1269,7 @@ describe('ProperOrderBook unit tests', async () => {
       let iterator = orderBook.getBidLevelIteratorFromMin();
       for (let bidLevel of iterator) {
         if (bidLevel.price === .3) {
-          assert(bidLevel.valueRemaining === 3300);
+          assert(bidLevel.valueRemaining === 3300n);
         }
       }
     });
@@ -1278,9 +1280,9 @@ describe('ProperOrderBook unit tests', async () => {
       let count = 0;
       for (let bidLevel of iterator) {
         if (bidLevel.price === .3) {
-          assert(bidLevel.valueRemaining === 300);
+          assert(bidLevel.valueRemaining === 300n);
         } else if (bidLevel.price === .9) {
-          assert(bidLevel.valueRemaining === 810);
+          assert(bidLevel.valueRemaining === 810n);
         }
         count++;
       }
@@ -1343,7 +1345,7 @@ describe('ProperOrderBook unit tests', async () => {
       let prevBidLevel;
       for (let bidLevel of iterator) {
         if (bidLevel.price === .3) {
-          assert(bidLevel.valueRemaining === 10300);
+          assert(bidLevel.valueRemaining === 10300n);
         }
         if (prevBidLevel) {
           assert(bidLevel.price <= prevBidLevel.price);
@@ -1356,7 +1358,7 @@ describe('ProperOrderBook unit tests', async () => {
       let iterator = orderBook.getBidLevelIteratorFromMax();
       for (let bidLevel of iterator) {
         if (bidLevel.price === .3) {
-          assert(bidLevel.valueRemaining === 10300);
+          assert(bidLevel.valueRemaining === 10300n);
         }
       }
     });

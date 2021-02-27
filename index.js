@@ -1,7 +1,7 @@
 const ProperSkipList = require('proper-skip-list');
 const LinkedList = require('linked-list');
 
-class ProperOrderBook {
+class BigOrderBook {
   constructor(options) {
     this.options = options || {};
     this.orderItemMap = new Map();
@@ -9,8 +9,10 @@ class ProperOrderBook {
     this.bidList = new ProperSkipList({updateLength: false});
     this.askCount = 0;
     this.bidCount = 0;
-    this.minPartialTakeValue = this.options.minPartialTakeValue || 0;
-    this.minPartialTakeSize = this.options.minPartialTakeSize || 0;
+    this.minPartialTakeValue = BigInt(this.options.minPartialTakeValue || 0);
+    this.minPartialTakeSize = BigInt(this.options.minPartialTakeSize || 0);
+    this.priceDecimalPrecision = this.options.priceDecimalPrecision == null ? 4 : this.options.priceDecimalPrecision;
+    this.pricePrecisionFactor = 10 ** this.priceDecimalPrecision;
   }
 
   add(order) {
@@ -142,6 +144,14 @@ class ProperOrderBook {
     this.bidCount = 0;
   }
 
+  _convertSizeToValue(size, price) {
+    return size * BigInt(Math.floor(price * this.pricePrecisionFactor)) / BigInt(this.pricePrecisionFactor);
+  }
+
+  _convertValueToSize(value, price) {
+    return (value * BigInt(this.pricePrecisionFactor)) / BigInt(Math.floor(price * this.pricePrecisionFactor));
+  }
+
   _addAsk(ask) {
     if (ask.value != null) {
       throw new Error(
@@ -158,19 +168,27 @@ class ProperOrderBook {
         `The ask order with id ${ask.id} is already in the order book`
       );
     }
+    if (ask.type === 'limit') {
+      if (ask.price == null || ask.price <= 0) {
+        throw new Error(
+          `The limit ask order with id ${ask.id} did not have a valid price property`
+        );
+      }
+      ask.price = Math.ceil(ask.price * this.pricePrecisionFactor) / this.pricePrecisionFactor;
+    }
     if (ask.sizeRemaining == null) {
-      ask.sizeRemaining = ask.size;
+      ask.sizeRemaining = BigInt(ask.size);
     }
     if (ask.lastSizeTaken == null) {
-      ask.lastSizeTaken = 0;
+      ask.lastSizeTaken = 0n;
     }
     if (ask.lastValueTaken == null) {
-      ask.lastValueTaken = 0;
+      ask.lastValueTaken = 0n;
     }
 
     let makers = [];
-    let takeSize = 0;
-    let takeValue = 0;
+    let takeSize = 0n;
+    let takeValue = 0n;
     let highestBid = this.getMaxBid();
     if (
       ask.type === 'limit' &&
@@ -184,7 +202,7 @@ class ProperOrderBook {
       for (let [currentBidPrice, priceOrderLinkedList] of iterator) {
         if (
           (ask.type === 'limit' && ask.price > currentBidPrice) ||
-          ask.sizeRemaining <= 0
+          ask.sizeRemaining <= 0n
         ) {
           break;
         }
@@ -192,16 +210,16 @@ class ProperOrderBook {
         while (currentItem) {
           let nextItem = currentItem.next;
           let currentBid = currentItem.order;
-          if (ask.sizeRemaining <= 0) {
+          if (ask.sizeRemaining <= 0n) {
             break;
           }
-          let askValueRemaining = ask.sizeRemaining * currentBid.price;
+          let askValueRemaining = this._convertSizeToValue(ask.sizeRemaining, currentBid.price);
           if (askValueRemaining >= currentBid.valueRemaining) {
-            let currentBidSizeRemaining = currentBid.valueRemaining / currentBid.price;
+            let currentBidSizeRemaining = this._convertValueToSize(currentBid.valueRemaining, currentBid.price);
             ask.sizeRemaining -= currentBidSizeRemaining;
             currentBid.lastSizeTaken = currentBidSizeRemaining;
             currentBid.lastValueTaken = currentBid.valueRemaining;
-            currentBid.valueRemaining = 0;
+            currentBid.valueRemaining = 0n;
             if (currentItem.list.size <= 1) {
               if (deleteRangeMax == null) {
                 deleteRangeMax = currentBidPrice;
@@ -210,7 +228,7 @@ class ProperOrderBook {
             }
             currentItem.detach();
             this.bidCount--;
-            takeSize += currentBid.lastValueTaken / currentBid.price;
+            takeSize += this._convertValueToSize(currentBid.lastValueTaken, currentBid.price);
             takeValue += currentBid.lastValueTaken;
             priceOrderLinkedList.valueRemaining -= currentBid.lastValueTaken;
             makers.push(currentBid);
@@ -220,12 +238,12 @@ class ProperOrderBook {
               currentBid.lastSizeTaken = ask.sizeRemaining;
               currentBid.lastValueTaken = askValueRemaining;
               currentBid.valueRemaining -= askValueRemaining;
-              takeSize += currentBid.lastValueTaken / currentBid.price;
+              takeSize += this._convertValueToSize(currentBid.lastValueTaken, currentBid.price);
               takeValue += currentBid.lastValueTaken;
               priceOrderLinkedList.valueRemaining -= currentBid.lastValueTaken;
               makers.push(currentBid);
             }
-            ask.sizeRemaining = 0;
+            ask.sizeRemaining = 0n;
           }
           currentItem = nextItem;
         }
@@ -233,7 +251,7 @@ class ProperOrderBook {
       if (deleteRangeMin != null) {
         this.bidList.deleteRange(deleteRangeMin, deleteRangeMax, true, true);
       }
-      if (ask.type === 'limit' && ask.sizeRemaining > 0) {
+      if (ask.type === 'limit' && ask.sizeRemaining > 0n) {
         this._insertAsk(ask);
       }
     }
@@ -250,7 +268,7 @@ class ProperOrderBook {
     if (!priceOrderLinkedList) {
       priceOrderLinkedList = new LinkedList();
       this.askList.upsert(order.price, priceOrderLinkedList);
-      priceOrderLinkedList.sizeRemaining = 0;
+      priceOrderLinkedList.sizeRemaining = 0n;
     }
     let newItem = new LinkedList.Item();
     newItem.order = order;
@@ -276,19 +294,27 @@ class ProperOrderBook {
         `The bid order with id ${bid.id} is already in the order book`
       );
     }
+    if (bid.type === 'limit') {
+      if (bid.price == null || bid.price <= 0) {
+        throw new Error(
+          `The limit bid order with id ${bid.id} did not have a valid price property`
+        );
+      }
+      bid.price = Math.ceil(bid.price * this.pricePrecisionFactor) / this.pricePrecisionFactor;
+    }
     if (bid.valueRemaining == null) {
-      bid.valueRemaining = bid.value;
+      bid.valueRemaining = BigInt(bid.value);
     }
     if (bid.lastSizeTaken == null) {
-      bid.lastSizeTaken = 0;
+      bid.lastSizeTaken = 0n;
     }
     if (bid.lastValueTaken == null) {
-      bid.lastValueTaken = 0;
+      bid.lastValueTaken = 0n;
     }
 
     let makers = [];
-    let takeSize = 0;
-    let takeValue = 0;
+    let takeSize = 0n;
+    let takeValue = 0n;
     let lowestAsk = this.getMinAsk();
     if (
       bid.type === 'limit' &&
@@ -302,7 +328,7 @@ class ProperOrderBook {
       for (let [currentAskPrice, priceOrderLinkedList] of iterator) {
         if (
           (bid.type === 'limit' && bid.price < currentAskPrice) ||
-          bid.valueRemaining <= 0
+          bid.valueRemaining <= 0n
         ) {
           break;
         }
@@ -310,16 +336,16 @@ class ProperOrderBook {
         while (currentItem) {
           let nextItem = currentItem.next;
           let currentAsk = currentItem.order;
-          if (bid.valueRemaining <= 0) {
+          if (bid.valueRemaining <= 0n) {
             break;
           }
-          let bidSizeRemaining = bid.valueRemaining / currentAsk.price;
+          let bidSizeRemaining = this._convertValueToSize(bid.valueRemaining, currentAsk.price);
           if (bidSizeRemaining >= currentAsk.sizeRemaining) {
-            let currentAskValueRemaining = currentAsk.sizeRemaining * currentAsk.price;
+            let currentAskValueRemaining = this._convertSizeToValue(currentAsk.sizeRemaining, currentAsk.price);
             bid.valueRemaining -= currentAskValueRemaining;
             currentAsk.lastSizeTaken = currentAsk.sizeRemaining;
             currentAsk.lastValueTaken = currentAskValueRemaining;
-            currentAsk.sizeRemaining = 0;
+            currentAsk.sizeRemaining = 0n;
             if (currentItem.list.size <= 1) {
               if (deleteRangeMin == null) {
                 deleteRangeMin = currentAskPrice;
@@ -329,7 +355,7 @@ class ProperOrderBook {
             currentItem.detach();
             this.askCount--;
             takeSize += currentAsk.lastSizeTaken;
-            takeValue += currentAsk.lastSizeTaken * currentAsk.price;
+            takeValue += this._convertSizeToValue(currentAsk.lastSizeTaken, currentAsk.price);
             priceOrderLinkedList.sizeRemaining -= currentAsk.lastSizeTaken;
             makers.push(currentAsk);
           } else {
@@ -339,11 +365,11 @@ class ProperOrderBook {
               currentAsk.lastValueTaken = bid.valueRemaining;
               currentAsk.sizeRemaining -= bidSizeRemaining;
               takeSize += currentAsk.lastSizeTaken;
-              takeValue += currentAsk.lastSizeTaken * currentAsk.price;
+              takeValue += this._convertSizeToValue(currentAsk.lastSizeTaken, currentAsk.price);
               priceOrderLinkedList.sizeRemaining -= currentAsk.lastSizeTaken;
               makers.push(currentAsk);
             }
-            bid.valueRemaining = 0;
+            bid.valueRemaining = 0n;
           }
           currentItem = nextItem;
         }
@@ -351,7 +377,7 @@ class ProperOrderBook {
       if (deleteRangeMin != null) {
         this.askList.deleteRange(deleteRangeMin, deleteRangeMax, true, true);
       }
-      if (bid.type === 'limit' && bid.valueRemaining > 0) {
+      if (bid.type === 'limit' && bid.valueRemaining > 0n) {
         this._insertBid(bid);
       }
     }
@@ -368,7 +394,7 @@ class ProperOrderBook {
     if (!priceOrderLinkedList) {
       priceOrderLinkedList = new LinkedList();
       this.bidList.upsert(order.price, priceOrderLinkedList);
-      priceOrderLinkedList.valueRemaining = 0;
+      priceOrderLinkedList.valueRemaining = 0n;
     }
     let newItem = new LinkedList.Item();
     newItem.order = order;
@@ -453,4 +479,4 @@ class ProperOrderBook {
   }
 }
 
-module.exports = ProperOrderBook;
+module.exports = BigOrderBook;

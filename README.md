@@ -1,14 +1,14 @@
-# proper-order-book
-An efficient order book which supports market and limit orders with fast insertion and search.
+# big-order-book
+An efficient order book which supports market and limit orders with fast insertion and search - Works with the BigInt type.
 
 This order book was designed with decentralized exchanges (DEXs) in mind.
 
 ### Usage
 
 ```js
-const ProperOrderBook = require('proper-order-book');
+const BigOrderBook = require('big-order-book');
 
-let orderBook = new ProperOrderBook();
+let orderBook = new BigOrderBook();
 
 orderBook.add({
   id: `ask0`,
