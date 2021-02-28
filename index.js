@@ -178,12 +178,18 @@ class BigOrderBook {
     }
     if (ask.sizeRemaining == null) {
       ask.sizeRemaining = BigInt(ask.size);
+    } else {
+      ask.sizeRemaining = BigInt(ask.sizeRemaining);
     }
     if (ask.lastSizeTaken == null) {
       ask.lastSizeTaken = 0n;
+    } else {
+      ask.lastSizeTaken = BigInt(ask.lastSizeTaken);
     }
     if (ask.lastValueTaken == null) {
       ask.lastValueTaken = 0n;
+    } else {
+      ask.lastValueTaken = BigInt(ask.lastValueTaken);
     }
 
     let makers = [];
@@ -304,12 +310,18 @@ class BigOrderBook {
     }
     if (bid.valueRemaining == null) {
       bid.valueRemaining = BigInt(bid.value);
+    } else {
+      bid.valueRemaining = BigInt(bid.valueRemaining);
     }
     if (bid.lastSizeTaken == null) {
       bid.lastSizeTaken = 0n;
+    } else {
+      bid.lastSizeTaken = BigInt(bid.lastSizeTaken);
     }
     if (bid.lastValueTaken == null) {
       bid.lastValueTaken = 0n;
+    } else {
+      bid.lastValueTaken = BigInt(bid.lastValueTaken);
     }
 
     let makers = [];
