@@ -174,7 +174,7 @@ class BigOrderBook {
           `The limit ask order with id ${ask.id} did not have a valid price property`
         );
       }
-      ask.price = Math.ceil(ask.price * this.pricePrecisionFactor) / this.pricePrecisionFactor;
+      ask.price = Math.round(ask.price * this.pricePrecisionFactor) / this.pricePrecisionFactor;
     }
     if (ask.sizeRemaining == null) {
       ask.sizeRemaining = BigInt(ask.size);
@@ -306,7 +306,7 @@ class BigOrderBook {
           `The limit bid order with id ${bid.id} did not have a valid price property`
         );
       }
-      bid.price = Math.ceil(bid.price * this.pricePrecisionFactor) / this.pricePrecisionFactor;
+      bid.price = Math.round(bid.price * this.pricePrecisionFactor) / this.pricePrecisionFactor;
     }
     if (bid.valueRemaining == null) {
       bid.valueRemaining = BigInt(bid.value);
