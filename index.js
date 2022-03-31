@@ -145,11 +145,11 @@ class BigOrderBook {
   }
 
   _convertSizeToValue(size, price) {
-    return size * BigInt(Math.floor(price * this.pricePrecisionFactor)) / BigInt(this.pricePrecisionFactor);
+    return size * BigInt(Math.round(price * this.pricePrecisionFactor)) / BigInt(this.pricePrecisionFactor);
   }
 
   _convertValueToSize(value, price) {
-    return value * BigInt(this.pricePrecisionFactor) / BigInt(Math.floor(price * this.pricePrecisionFactor));
+    return value * BigInt(this.pricePrecisionFactor) / BigInt(Math.round(price * this.pricePrecisionFactor));
   }
 
   _addAsk(ask) {
