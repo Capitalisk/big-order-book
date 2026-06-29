@@ -665,6 +665,7 @@ describe('BigOrderBook unit tests', async () => {
       });
 
       assert(orderBook.has('ask0') === false);
+      assert(orderBook.has('bid0') === false);
 
       orderBook.add({
         id: `bid0`,
@@ -689,6 +690,7 @@ describe('BigOrderBook unit tests', async () => {
       });
 
       assert(orderBook.has('bid0') === false);
+      assert(orderBook.has('ask0') === false);
     });
   });
 
