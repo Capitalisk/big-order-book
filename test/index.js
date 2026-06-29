@@ -637,6 +637,59 @@ describe('BigOrderBook unit tests', async () => {
       assert(result.makers[0].lastValueTaken === 1000n);
       assert(result.makers[0].valueRemaining === 0n);
     });
+
+    it('should fully remove an order which has been filled', async () => {
+      orderBook = new BigOrderBook({
+        minPartialTakeValue: 51
+      });
+
+      orderBook.add({
+        id: `ask0`,
+        type: 'limit',
+        price: 1,
+        targetChain: 'lsk',
+        targetWalletAddress: '22245678912345678222L',
+        senderId: '11111111111222222222L',
+        side: 'ask',
+        size: 10
+      });
+      orderBook.add({
+        id: `bid0`,
+        type: 'limit',
+        price: 1,
+        targetChain: 'clsk',
+        targetWalletAddress: '22245678912345678222L',
+        senderId: '11111111111222223333L',
+        side: 'bid',
+        value: 10
+      });
+
+      assert(orderBook.has('ask0') === false);
+
+      orderBook.add({
+        id: `bid0`,
+        type: 'limit',
+        price: 1,
+        targetChain: 'clsk',
+        targetWalletAddress: '22245678912345678222L',
+        senderId: '11111111111222223333L',
+        side: 'bid',
+        value: 10
+      });
+
+      orderBook.add({
+        id: `ask0`,
+        type: 'limit',
+        price: 1,
+        targetChain: 'lsk',
+        targetWalletAddress: '22245678912345678222L',
+        senderId: '11111111111222222222L',
+        side: 'ask',
+        size: 10
+      });
+
+      assert(orderBook.has('bid0') === false);
+    });
   });
 
   describe('#has', async () => {

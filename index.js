@@ -234,6 +234,7 @@ class BigOrderBook {
             }
             currentItem.detach();
             this.bidCount--;
+            this.orderItemMap.delete(currentBid.id);
             takeSize += this._convertValueToSize(currentBid.lastValueTaken, currentBid.price);
             takeValue += currentBid.lastValueTaken;
             priceOrderLinkedList.valueRemaining -= currentBid.lastValueTaken;
@@ -366,6 +367,7 @@ class BigOrderBook {
             }
             currentItem.detach();
             this.askCount--;
+            this.orderItemMap.delete(currentAsk.id);
             takeSize += currentAsk.lastSizeTaken;
             takeValue += this._convertSizeToValue(currentAsk.lastSizeTaken, currentAsk.price);
             priceOrderLinkedList.sizeRemaining -= currentAsk.lastSizeTaken;
