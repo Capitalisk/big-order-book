@@ -1663,8 +1663,9 @@ describe('BigOrderBook security regression tests', async () => {
       assert(orderBook.get('ask0').sizeRemaining === 10000n);
       assert(orderBook.get('ask0').lastSizeTaken === 0n);
       assert(orderBook.has('bid0') === false);
-      // Nothing was traded, so the whole order is reported back as untraded.
-      assert(result.taker.valueRemaining === 999n);
+      // Nothing was traded, so the whole order is given up.
+      assert(result.taker.valueRemaining === 0n);
+      assert(BigInt(result.taker.value) - result.takeValue === 999n);
       assertBookIsConsistent(orderBook);
     });
 
@@ -1681,7 +1682,8 @@ describe('BigOrderBook security regression tests', async () => {
         assert(result.takeValue === 0n);
         assert(orderBook.get('bid0').valueRemaining === 1000n);
         assert(orderBook.get('bid0').lastSizeTaken === 0n);
-        assert(result.taker.sizeRemaining === 5000n);
+        assert(result.taker.sizeRemaining === 0n);
+        assert(BigInt(result.taker.size) - result.takeSize === 5000n);
         assert(orderBook.has(`ask${i}`) === false);
       }
       assert(orderBook.bidCount === 1);
@@ -1728,28 +1730,28 @@ describe('BigOrderBook security regression tests', async () => {
       assertBookIsConsistent(orderBook);
     });
 
-    it('should report a remainder which was too small to trade instead of zeroing it', async () => {
-      // 5 of value buys 1 unit of size at a price of 3; the leftover 2 cannot buy
-      // anything, so it is reported on the taker for the host application to return
-      // to the sender rather than being resting in the book as a dust order.
+    it('should zero a remainder which was too small to trade so it cannot rest as dust', async () => {
+      // 5 of value buys 1 unit of size at a price of 3. The leftover 2 cannot buy
+      // anything, so the taker is finished and must not rest in the book as a dust
+      // order; the amount given up is value minus takeValue.
       addOrder(orderBook, {id: `ask0`, price: 3, side: 'ask', size: 1000});
       result = addOrder(orderBook, {id: `bid0`, price: 3, side: 'bid', value: 5});
 
       assert(result.takeValue === 3n);
-      assert(result.taker.valueRemaining === 2n);
-      assert(BigInt(result.taker.value) === result.takeValue + result.taker.valueRemaining);
+      assert(result.taker.valueRemaining === 0n);
+      assert(BigInt(result.taker.value) - result.takeValue === 2n);
       assert(orderBook.has('bid0') === false);
       assert(orderBook.bidCount === 0);
       assertBookIsConsistent(orderBook);
 
-      // An ask taker sells all of its remaining size in the same situation, so it has
-      // nothing left over.
+      // An ask taker sells all of its remaining size in the same situation, so there
+      // is nothing to give up.
       addOrder(orderBook, {id: `bid1`, price: .3, side: 'bid', value: 1000});
       result = addOrder(orderBook, {id: `ask1`, price: .3, side: 'ask', size: 5});
 
       assert(result.takeSize === 5n);
       assert(result.taker.sizeRemaining === 0n);
-      assert(BigInt(result.taker.size) === result.takeSize + result.taker.sizeRemaining);
+      assert(BigInt(result.taker.size) - result.takeSize === 0n);
       assert(orderBook.has('ask1') === false);
       assertBookIsConsistent(orderBook);
     });
@@ -1808,12 +1810,11 @@ describe('BigOrderBook security regression tests', async () => {
           let makerValueTotal = result.makers.reduce((total, maker) => total + maker.lastValueTaken, 0n);
           assert(result.takeSize === makerSizeTotal);
           assert(result.takeValue === makerValueTotal);
-          // Everything the taker committed is either traded, still resting in the
-          // book, or reported back as untraded; none of it is unaccounted for.
+          // A taker can never have more traded plus left over than it committed.
           if (side === 'ask') {
-            assert(amount === result.takeSize + result.taker.sizeRemaining);
+            assert(result.takeSize + result.taker.sizeRemaining <= amount);
           } else {
-            assert(amount === result.takeValue + result.taker.valueRemaining);
+            assert(result.takeValue + result.taker.valueRemaining <= amount);
           }
           if (result.makers.length) {
             fillCount++;
@@ -1839,9 +1840,10 @@ describe('BigOrderBook security regression tests', async () => {
       assert(result.takeValue === 1000n);
       assert(result.makers.length === 1);
       assert(orderBook.get('ask0').sizeRemaining === 1000n);
-      // The 100 which was not traded is reported on the taker so that it can be
-      // returned to the sender, even though the order does not rest in the book.
-      assert(result.taker.valueRemaining === 100n);
+      // The 100 which could not be taken is given up; it is recoverable from
+      // value minus takeValue.
+      assert(result.taker.valueRemaining === 0n);
+      assert(BigInt(result.taker.value) - result.takeValue === 100n);
       assert(orderBook.has('bid0') === false);
       assertBookIsConsistent(orderBook);
     });
@@ -1907,36 +1909,64 @@ describe('BigOrderBook security regression tests', async () => {
   });
 
   describe('order state property validation', async () => {
-    it('should reject order state properties which the order book computes itself', async () => {
-      let stateProperties = ['sizeRemaining', 'lastSizeTaken', 'lastValueTaken'];
-      for (let property of stateProperties) {
+    it('should accept computed order state properties by default and reject them in strict mode', async () => {
+      // Accepted by default so that a host application can rehydrate a snapshot.
+      addOrder(orderBook, {id: `ask0`, price: 1, side: 'ask', size: 100, sizeRemaining: 40});
+      assert(orderBook.get('ask0').sizeRemaining === 40n);
+      assert(orderBook.getAskLevelIteratorFromMin().next().value.sizeRemaining === 40n);
+
+      // They are still validated like any other amount.
+      for (let sizeRemaining of [-5, 0, 1.5]) {
         let error = captureError(
-          () => addOrder(orderBook, {id: `ask-${property}`, price: 1, side: 'ask', size: 1, [property]: 1000000})
+          () => addOrder(orderBook, {id: `ask-${sizeRemaining}`, price: 1, side: 'ask', size: 100, sizeRemaining})
+        );
+        assert(error != null);
+      }
+
+      // strictOrderState refuses them, for a host which passes untrusted order
+      // objects straight to add().
+      let strictBook = new BigOrderBook({priceDecimalPrecision: 4, strictOrderState: true});
+      for (let property of ['sizeRemaining', 'lastSizeTaken', 'lastValueTaken']) {
+        let error = captureError(
+          () => strictBook.add(makeOrder({id: `ask-${property}`, price: 1, side: 'ask', size: 1, [property]: 1000000}))
         );
         assert(error != null);
       }
       for (let property of ['valueRemaining', 'lastSizeTaken', 'lastValueTaken']) {
         let error = captureError(
-          () => addOrder(orderBook, {id: `bid-${property}`, price: 1, side: 'bid', value: 1, [property]: 1000000})
+          () => strictBook.add(makeOrder({id: `bid-${property}`, price: 1, side: 'bid', value: 1, [property]: 1000000}))
         );
         assert(error != null);
       }
-      assert(orderBook.askCount === 0);
-      assert(orderBook.bidCount === 0);
+      assert(strictBook.askCount === 0);
+      assert(strictBook.bidCount === 0);
+
+      // The restore option is the explicit way past it.
+      strictBook.add(makeOrder({id: `ask9`, price: 1, side: 'ask', size: 100, sizeRemaining: 40}), {restore: true});
+      assert(strictBook.get('ask9').sizeRemaining === 40n);
+      assertBookIsConsistent(strictBook);
+      assertBookIsConsistent(orderBook);
     });
 
-    it('should not let a declared size be bypassed with a larger sizeRemaining', async () => {
+    it('should only prevent a declared size being bypassed when strictOrderState is set', async () => {
+      // Without the option the order book trusts the caller, which is what makes
+      // snapshot restore possible; such a host must build its own order objects
+      // rather than forwarding a submitted one.
       addOrder(orderBook, {id: `bid0`, price: 1, side: 'bid', value: 1000000});
+      result = addOrder(orderBook, {id: `cheat`, price: 1, side: 'ask', size: 1, sizeRemaining: 1000});
+      assert(result.takeSize === 1000n);
 
+      let strictBook = new BigOrderBook({priceDecimalPrecision: 4, strictOrderState: true});
+      strictBook.add(makeOrder({id: `bid0`, price: 1, side: 'bid', value: 1000000}));
       let error = captureError(
-        () => addOrder(orderBook, {id: `cheat`, price: 1, side: 'ask', size: 1, sizeRemaining: 1000000})
+        () => strictBook.add(makeOrder({id: `cheat`, price: 1, side: 'ask', size: 1, sizeRemaining: 1000}))
       );
       assert(error != null);
-      assert(orderBook.get('bid0').valueRemaining === 1000000n);
+      assert(strictBook.get('bid0').valueRemaining === 1000000n);
 
-      result = addOrder(orderBook, {id: `honest`, price: 1, side: 'ask', size: 1});
+      result = strictBook.add(makeOrder({id: `honest`, price: 1, side: 'ask', size: 1}));
       assert(result.takeSize === 1n);
-      assert(result.takeValue === 1n);
+      assertBookIsConsistent(strictBook);
       assertBookIsConsistent(orderBook);
     });
 
@@ -1999,20 +2029,44 @@ describe('BigOrderBook security regression tests', async () => {
   });
 
   describe('order isolation', async () => {
-    it('should not mutate the order object which was passed in', async () => {
-      let order = makeOrder({id: `ask0`, price: .50004, side: 'ask', size: 100});
+    it('should write the computed order state onto the order object which was passed in', async () => {
+      // A host application tracks a resting order by keeping its own reference, so
+      // the order book holds the object it was given and keeps it current.
+      let order = makeOrder({id: `bid0`, price: .50004, side: 'bid', value: 10000});
       orderBook.add(order);
 
-      assert(order.price === .50004);
-      assert(order.sizeRemaining === undefined);
-      assert(order.lastSizeTaken === undefined);
-      assert(order.lastValueTaken === undefined);
-      assert(orderBook.get('ask0').price === .5);
+      assert(order.price === .5);
+      assert(order.valueRemaining === 10000n);
+      assert(order.lastSizeTaken === 0n);
+      assert(order.lastValueTaken === 0n);
+      assert(orderBook.get('bid0').valueRemaining === 10000n);
 
-      // The same object can therefore be submitted again once it is removed.
-      orderBook.remove('ask0');
-      orderBook.add(order);
-      assert(orderBook.get('ask0').sizeRemaining === 100n);
+      // The caller's reference has to follow the order as it is filled.
+      addOrder(orderBook, {id: `ask0`, price: .5, side: 'ask', size: 100});
+
+      assert(order.valueRemaining === 9950n);
+      assert(order.lastSizeTaken === 100n);
+      assert(order.lastValueTaken === 50n);
+      assert(orderBook.get('bid0').valueRemaining === order.valueRemaining);
+      assertBookIsConsistent(orderBook);
+    });
+
+    it('should leave the order object untouched when the order is rejected', async () => {
+      // Validation runs before anything is written, so a thrown error cannot leave
+      // a half-initialised order behind for the caller to misread.
+      let badAmount = makeOrder({id: `bid1`, price: .50004, side: 'bid', value: -5});
+      assert(captureError(() => orderBook.add(badAmount)) != null);
+      assert(badAmount.price === .50004);
+      assert(badAmount.valueRemaining === undefined);
+      assert(badAmount.lastSizeTaken === undefined);
+      assert(badAmount.lastValueTaken === undefined);
+
+      let badPrice = makeOrder({id: `bid2`, price: .00004, side: 'bid', value: 100});
+      assert(captureError(() => orderBook.add(badPrice)) != null);
+      assert(badPrice.price === .00004);
+      assert(badPrice.valueRemaining === undefined);
+
+      assert(orderBook.bidCount === 0);
       assertBookIsConsistent(orderBook);
     });
 

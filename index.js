@@ -2,11 +2,10 @@ const ProperSkipList = require('proper-skip-list');
 const LinkedList = require('linked-list');
 
 // These properties describe the live state of a partially filled order; they are
-// computed by the order book itself. Accepting them from an untrusted order
-// submission would let the sender bypass whatever validation the host application
-// performed on the size and value properties, so they are only honoured when an
-// order is added with the restore option, which is reserved for rehydrating a
-// trusted snapshot.
+// computed by the order book itself. They are accepted on input so that a snapshot
+// can be rehydrated, but a host application which passes untrusted order objects
+// straight to add() should enable the strictOrderState option; otherwise a sender
+// could use them to bypass validation of the size or value property.
 const ORDER_STATE_FIELDS = ['sizeRemaining', 'valueRemaining', 'lastSizeTaken', 'lastValueTaken'];
 
 class BigOrderBook {
@@ -27,8 +26,15 @@ class BigOrderBook {
       );
     }
     this.maxOrderCount = this.options.maxOrderCount == null ? Infinity : this.options.maxOrderCount;
+    this.strictOrderState = !!this.options.strictOrderState;
   }
 
+  // The order book takes ownership of the order object: it writes the computed
+  // sizeRemaining, valueRemaining, lastSizeTaken and lastValueTaken properties onto
+  // it, normalizes its price and then holds that same object, so the caller can
+  // track an order by keeping its own reference. The caller must not modify the
+  // object afterwards; the orders handed back by get, remove and the iterators are
+  // copies precisely so that reading the book cannot corrupt it.
   add(order, options) {
     if (order == null) {
       throw new Error('The order to add was null or undefined');
@@ -238,7 +244,7 @@ class BigOrderBook {
     for (let propertyName of ORDER_STATE_FIELDS) {
       if (order[propertyName] !== undefined) {
         throw new Error(
-          `The order with id ${order.id} had a ${propertyName} property; it is computed by the order book and is only accepted when the order is added with the restore option`
+          `The order with id ${order.id} had a ${propertyName} property; it is computed by the order book and the strictOrderState option only accepts it when the order is added with the restore option`
         );
       }
     }
@@ -269,33 +275,30 @@ class BigOrderBook {
         `The ask order with id ${sourceAsk.id} is already in the order book`
       );
     }
-    if (!restore) {
+    if (this.strictOrderState && !restore) {
       this._assertNoOrderStateFields(sourceAsk);
     }
     this._assertCapacity(sourceAsk);
 
-    // The order book stores its own copy of the order; a reference kept by the
-    // caller must not be able to mutate committed book state afterwards.
-    let ask = {...sourceAsk};
-    let size = this._toBigIntAmount(ask.size, 'size', ask.id, false);
+    // Everything is validated before anything is written, so a rejected order
+    // leaves the caller's object exactly as it was.
+    let size = this._toBigIntAmount(sourceAsk.size, 'size', sourceAsk.id, false);
+    let price = sourceAsk.type === 'limit' ?
+      this._normalizePrice(sourceAsk.price, sourceAsk.id) : sourceAsk.price;
+    let sizeRemaining = sourceAsk.sizeRemaining == null ?
+      size : this._toBigIntAmount(sourceAsk.sizeRemaining, 'sizeRemaining', sourceAsk.id, false);
+    let lastSizeTaken = sourceAsk.lastSizeTaken == null ?
+      0n : this._toBigIntAmount(sourceAsk.lastSizeTaken, 'lastSizeTaken', sourceAsk.id, true);
+    let lastValueTaken = sourceAsk.lastValueTaken == null ?
+      0n : this._toBigIntAmount(sourceAsk.lastValueTaken, 'lastValueTaken', sourceAsk.id, true);
+
+    let ask = sourceAsk;
     if (ask.type === 'limit') {
-      ask.price = this._normalizePrice(ask.price, ask.id);
+      ask.price = price;
     }
-    if (ask.sizeRemaining == null) {
-      ask.sizeRemaining = size;
-    } else {
-      ask.sizeRemaining = this._toBigIntAmount(ask.sizeRemaining, 'sizeRemaining', ask.id, false);
-    }
-    if (ask.lastSizeTaken == null) {
-      ask.lastSizeTaken = 0n;
-    } else {
-      ask.lastSizeTaken = this._toBigIntAmount(ask.lastSizeTaken, 'lastSizeTaken', ask.id, true);
-    }
-    if (ask.lastValueTaken == null) {
-      ask.lastValueTaken = 0n;
-    } else {
-      ask.lastValueTaken = this._toBigIntAmount(ask.lastValueTaken, 'lastValueTaken', ask.id, true);
-    }
+    ask.sizeRemaining = sizeRemaining;
+    ask.lastSizeTaken = lastSizeTaken;
+    ask.lastValueTaken = lastValueTaken;
 
     let makers = [];
     let takeSize = 0n;
@@ -308,11 +311,6 @@ class BigOrderBook {
       this._insertAsk(ask);
     } else {
       let iterator = this.bidList.findEntriesFromMax();
-      // Set once the taker can no longer reach another maker. Anything still left on
-      // the taker at that point cannot be traded, so it must not rest in the order
-      // book, but it is kept on the order rather than zeroed so that the host
-      // application can see how much to return to the sender.
-      let takerIsDone = false;
       // Price levels are emptied in contiguous runs, so they can be dropped with a
       // single range delete per run. A maker which has to be skipped keeps its own
       // level alive and interrupts the current run.
@@ -322,7 +320,6 @@ class BigOrderBook {
       for (let [currentBidPrice, priceOrderLinkedList] of iterator) {
         if (
           (ask.type === 'limit' && ask.price > currentBidPrice) ||
-          takerIsDone ||
           ask.sizeRemaining <= 0n
         ) {
           break;
@@ -331,7 +328,7 @@ class BigOrderBook {
         while (currentItem) {
           let nextItem = currentItem.next;
           let currentBid = currentItem.order;
-          if (takerIsDone || ask.sizeRemaining <= 0n) {
+          if (ask.sizeRemaining <= 0n) {
             break;
           }
           let askValueRemaining = this._convertSizeToValue(ask.sizeRemaining, currentBid.price);
@@ -382,13 +379,13 @@ class BigOrderBook {
               takeValue += currentBid.lastValueTaken;
               priceOrderLinkedList.valueRemaining -= currentBid.lastValueTaken;
               makers.push(currentBid);
-              ask.sizeRemaining -= currentBid.lastSizeTaken;
             }
             // This maker's remaining value is worth more than the taker's remaining
-            // size, so no further maker can be reached. Any size which was too small
-            // to take is not traded and does not rest in the order book; see
+            // size, so no further maker can be reached. Any size which could not be
+            // taken is given up rather than left to rest as a dust order; the host
+            // application can see how much from size minus takeSize. See
             // minPartialTakeValue.
-            takerIsDone = true;
+            ask.sizeRemaining = 0n;
           }
           currentItem = nextItem;
         }
@@ -399,7 +396,7 @@ class BigOrderBook {
       for (let [rangeMin, rangeMax] of deleteRanges) {
         this.bidList.deleteRange(rangeMin, rangeMax, true, true);
       }
-      if (ask.type === 'limit' && !takerIsDone && ask.sizeRemaining > 0n) {
+      if (ask.type === 'limit' && ask.sizeRemaining > 0n) {
         this._insertAsk(ask);
       }
     }
@@ -442,33 +439,30 @@ class BigOrderBook {
         `The bid order with id ${sourceBid.id} is already in the order book`
       );
     }
-    if (!restore) {
+    if (this.strictOrderState && !restore) {
       this._assertNoOrderStateFields(sourceBid);
     }
     this._assertCapacity(sourceBid);
 
-    // The order book stores its own copy of the order; a reference kept by the
-    // caller must not be able to mutate committed book state afterwards.
-    let bid = {...sourceBid};
-    let value = this._toBigIntAmount(bid.value, 'value', bid.id, false);
+    // Everything is validated before anything is written, so a rejected order
+    // leaves the caller's object exactly as it was.
+    let value = this._toBigIntAmount(sourceBid.value, 'value', sourceBid.id, false);
+    let price = sourceBid.type === 'limit' ?
+      this._normalizePrice(sourceBid.price, sourceBid.id) : sourceBid.price;
+    let valueRemaining = sourceBid.valueRemaining == null ?
+      value : this._toBigIntAmount(sourceBid.valueRemaining, 'valueRemaining', sourceBid.id, false);
+    let lastSizeTaken = sourceBid.lastSizeTaken == null ?
+      0n : this._toBigIntAmount(sourceBid.lastSizeTaken, 'lastSizeTaken', sourceBid.id, true);
+    let lastValueTaken = sourceBid.lastValueTaken == null ?
+      0n : this._toBigIntAmount(sourceBid.lastValueTaken, 'lastValueTaken', sourceBid.id, true);
+
+    let bid = sourceBid;
     if (bid.type === 'limit') {
-      bid.price = this._normalizePrice(bid.price, bid.id);
+      bid.price = price;
     }
-    if (bid.valueRemaining == null) {
-      bid.valueRemaining = value;
-    } else {
-      bid.valueRemaining = this._toBigIntAmount(bid.valueRemaining, 'valueRemaining', bid.id, false);
-    }
-    if (bid.lastSizeTaken == null) {
-      bid.lastSizeTaken = 0n;
-    } else {
-      bid.lastSizeTaken = this._toBigIntAmount(bid.lastSizeTaken, 'lastSizeTaken', bid.id, true);
-    }
-    if (bid.lastValueTaken == null) {
-      bid.lastValueTaken = 0n;
-    } else {
-      bid.lastValueTaken = this._toBigIntAmount(bid.lastValueTaken, 'lastValueTaken', bid.id, true);
-    }
+    bid.valueRemaining = valueRemaining;
+    bid.lastSizeTaken = lastSizeTaken;
+    bid.lastValueTaken = lastValueTaken;
 
     let makers = [];
     let takeSize = 0n;
@@ -481,11 +475,6 @@ class BigOrderBook {
       this._insertBid(bid);
     } else {
       let iterator = this.askList.findEntriesFromMin();
-      // Set once the taker can no longer reach another maker. Anything still left on
-      // the taker at that point cannot be traded, so it must not rest in the order
-      // book, but it is kept on the order rather than zeroed so that the host
-      // application can see how much to return to the sender.
-      let takerIsDone = false;
       // Price levels are emptied in contiguous runs, so they can be dropped with a
       // single range delete per run. A maker which has to be skipped keeps its own
       // level alive and interrupts the current run.
@@ -495,7 +484,6 @@ class BigOrderBook {
       for (let [currentAskPrice, priceOrderLinkedList] of iterator) {
         if (
           (bid.type === 'limit' && bid.price < currentAskPrice) ||
-          takerIsDone ||
           bid.valueRemaining <= 0n
         ) {
           break;
@@ -504,7 +492,7 @@ class BigOrderBook {
         while (currentItem) {
           let nextItem = currentItem.next;
           let currentAsk = currentItem.order;
-          if (takerIsDone || bid.valueRemaining <= 0n) {
+          if (bid.valueRemaining <= 0n) {
             break;
           }
           let bidSizeRemaining = this._convertValueToSize(bid.valueRemaining, currentAsk.price);
@@ -556,13 +544,12 @@ class BigOrderBook {
               takeValue += currentAsk.lastValueTaken;
               priceOrderLinkedList.sizeRemaining -= currentAsk.lastSizeTaken;
               makers.push(currentAsk);
-              bid.valueRemaining -= currentAsk.lastValueTaken;
             }
             // This maker has more size than the taker's remaining value can buy, so
-            // no further maker can be reached. Any value which was too small to take
-            // is not traded and does not rest in the order book; see
-            // minPartialTakeSize.
-            takerIsDone = true;
+            // no further maker can be reached. Any value which could not be taken is
+            // given up rather than left to rest as a dust order; the host application
+            // can see how much from value minus takeValue. See minPartialTakeSize.
+            bid.valueRemaining = 0n;
           }
           currentItem = nextItem;
         }
@@ -573,7 +560,7 @@ class BigOrderBook {
       for (let [rangeMin, rangeMax] of deleteRanges) {
         this.askList.deleteRange(rangeMin, rangeMax, true, true);
       }
-      if (bid.type === 'limit' && !takerIsDone && bid.valueRemaining > 0n) {
+      if (bid.type === 'limit' && bid.valueRemaining > 0n) {
         this._insertBid(bid);
       }
     }

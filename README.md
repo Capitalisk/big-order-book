@@ -71,7 +71,8 @@ let orderBook = new BigOrderBook({
   priceDecimalPrecision: 4,
   minPartialTakeSize: 0,
   minPartialTakeValue: 0,
-  maxOrderCount: Infinity
+  maxOrderCount: Infinity,
+  strictOrderState: false
 });
 ```
 
@@ -84,6 +85,11 @@ let orderBook = new BigOrderBook({
 - `maxOrderCount`: Maximum number of orders which may rest in the book at once. Market orders
   never rest, so they can still be used to drain a book which is at capacity. Unlimited by
   default; set it if the host application does not otherwise bound how many orders it accepts.
+- `strictOrderState`: Refuse orders which already carry a `sizeRemaining`, `valueRemaining`,
+  `lastSizeTaken` or `lastValueTaken` property. Off by default so that a snapshot can be
+  rehydrated. Turn it on if order objects submitted by untrusted senders are passed straight to
+  `add()`, since those properties otherwise override the validated `size` or `value`; use
+  `add(order, {restore: true})` to restore a snapshot while it is on.
 
 ### Order validation
 
@@ -98,13 +104,31 @@ let orderBook = new BigOrderBook({
 - A limit order's `price` must be a finite number which is still greater than 0 once it has
   been rounded to `priceDecimalPrecision`, and small enough to represent at that precision.
 - `sizeRemaining`, `valueRemaining`, `lastSizeTaken` and `lastValueTaken` are computed by the
-  order book. They are rejected on a normal `add()` so that an order which is submitted by an
-  untrusted sender cannot use them to bypass validation of `size` or `value`. Pass
-  `add(order, {restore: true})` to accept them when rehydrating a trusted snapshot.
+  order book, but are accepted on input so that a snapshot can be rehydrated. They are validated
+  like any other amount. See the `strictOrderState` option if untrusted order objects are
+  forwarded to `add()` directly.
 
-The order book keeps its own copy of each order, so `add()` does not modify the object which
-was passed in, and the orders returned by `get()`, `remove()`, `getMinAsk()` and the iterators
-are copies which can be modified without affecting the book.
+Validation runs before anything is written, so an order which is rejected leaves the object
+which was passed in exactly as it was.
+
+### Order ownership
+
+`add()` takes ownership of the order object. It writes the computed `sizeRemaining` /
+`valueRemaining`, `lastSizeTaken` and `lastValueTaken` properties onto it, normalizes its
+`price`, and then holds that same object, so a host application can track a resting order by
+keeping its own reference and reading those properties as the order fills:
+
+```js
+let order = {id: 'ask0', type: 'limit', price: .5, side: 'ask', size: 100};
+orderBook.add(order);
+// ...once a bid takes part of it:
+order.sizeRemaining;  // 80n
+```
+
+The caller must not modify the object afterwards. Changing its `price` or a remaining amount
+corrupts the price level it is filed under and the aggregates reported by the level iterators.
+For that reason the orders handed back by `get()`, `remove()`, `getMinAsk()`, `getMaxBid()` and
+the order iterators are copies, which can be modified freely without affecting the book.
 
 ### Matching and rounding
 
