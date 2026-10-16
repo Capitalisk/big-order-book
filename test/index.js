@@ -1425,7 +1425,7 @@ describe('BigOrderBook unit tests', async () => {
         orderBook.add({
           id: `ask${i}`,
           type: 'limit',
-          price: (i + 1) / 100,
+          price: (i + 101) / 100,
           targetChain: 'lsk',
           targetWalletAddress: '22245678912345678222L',
           senderId: '11111111111222222222L',
@@ -1437,7 +1437,7 @@ describe('BigOrderBook unit tests', async () => {
         orderBook.add({
           id: `bid${i}`,
           type: 'limit',
-          price: (i + 1) / 100000,
+          price: (i + 1) / 100,
           targetChain: 'clsk',
           targetWalletAddress: '22245678912345678222L',
           senderId: '11111111111222222222L',
@@ -1459,6 +1459,664 @@ describe('BigOrderBook unit tests', async () => {
 
       assert(orderBook.askCount === allAsks.length);
       assert(orderBook.bidCount === allBids.length);
+    });
+  });
+});
+
+describe('BigOrderBook security regression tests', async () => {
+  let orderBook;
+  let result;
+
+  // Builds an order with the ancillary properties which a DEX would attach, so
+  // that the assertions below only have to mention the properties under test.
+  function makeOrder(order) {
+    return {
+      targetChain: order.side === 'ask' ? 'lsk' : 'clsk',
+      targetWalletAddress: '22245678912345678222L',
+      senderId: '11111111111222222222L',
+      type: 'limit',
+      ...order
+    };
+  }
+
+  function addOrder(book, order) {
+    return book.add(makeOrder(order));
+  }
+
+  function captureError(callback) {
+    try {
+      callback();
+    } catch (err) {
+      return err;
+    }
+    return null;
+  }
+
+  // An order whose remaining amount is too small to convert at its own price can
+  // never be filled; it is skipped by the matching loop and left for its sender to
+  // cancel, so it is allowed to sit on the wrong side of the spread.
+  function isFillable(book, order) {
+    if (order.side === 'ask') {
+      return book._convertSizeToValue(order.sizeRemaining, order.price) > 0n;
+    }
+    return book._convertValueToSize(order.valueRemaining, order.price) > 0n;
+  }
+
+  // The book is only consistent if every aggregate can be recomputed from the
+  // orders which are actually linked into it.
+  function assertBookIsConsistent(book) {
+    let sides = [
+      ['ask', book.askList, 'sizeRemaining', book.askCount],
+      ['bid', book.bidList, 'valueRemaining', book.bidCount]
+    ];
+    for (let [side, priceList, remainingProperty, expectedCount] of sides) {
+      let orderCount = 0;
+      for (let [price, priceOrderLinkedList] of priceList.findEntriesFromMin()) {
+        if (price === undefined) {
+          break;
+        }
+        assert(priceOrderLinkedList.head != null);
+        let remainingTotal = 0n;
+        let levelOrderCount = 0;
+        for (let item = priceOrderLinkedList.head; item; item = item.next) {
+          assert(book.orderItemMap.get(item.order.id) === item);
+          assert(item.order.price === price);
+          assert(item.order[remainingProperty] > 0n);
+          remainingTotal += item.order[remainingProperty];
+          levelOrderCount++;
+        }
+        assert(priceOrderLinkedList[remainingProperty] === remainingTotal);
+        assert(priceOrderLinkedList.size === levelOrderCount);
+        orderCount += levelOrderCount;
+      }
+      assert(orderCount === expectedCount);
+    }
+    let minAsk = book.getMinAsk();
+    let maxBid = book.getMaxBid();
+    if (minAsk && maxBid && isFillable(book, minAsk) && isFillable(book, maxBid)) {
+      assert(maxBid.price < minAsk.price);
+    }
+  }
+
+  beforeEach(async () => {
+    orderBook = new BigOrderBook({
+      priceDecimalPrecision: 4
+    });
+  });
+
+  describe('order size and value validation', async () => {
+    it('should reject a negative or zero ask size', async () => {
+      for (let size of [-1000000, -1, 0, -1000000n, 0n, '-5']) {
+        let error = captureError(() => addOrder(orderBook, {id: `ask-${size}`, price: .5, side: 'ask', size}));
+        assert(error != null);
+      }
+      assert(orderBook.askCount === 0);
+      assertBookIsConsistent(orderBook);
+    });
+
+    it('should reject a negative or zero bid value', async () => {
+      for (let value of [-1000000, -1, 0, -1000000n, 0n, '-5']) {
+        let error = captureError(() => addOrder(orderBook, {id: `bid-${value}`, price: .5, side: 'bid', value}));
+        assert(error != null);
+      }
+      assert(orderBook.bidCount === 0);
+      assertBookIsConsistent(orderBook);
+    });
+
+    it('should not let a negative size ask inflate the taker or drain resting makers', async () => {
+      addOrder(orderBook, {id: `ask0`, price: 1, side: 'ask', size: 1000});
+      addOrder(orderBook, {id: `ask1`, price: 2, side: 'ask', size: 1000});
+
+      // A negative size used to reverse every subtraction in the matching loop,
+      // which let the taker finish with more value than it started with.
+      let error = captureError(() => addOrder(orderBook, {id: `evil`, price: .5, side: 'ask', size: -1000000}));
+      assert(error != null);
+      assert(orderBook.has('evil') === false);
+      assert(orderBook.askCount === 2);
+
+      result = addOrder(orderBook, {id: `bid0`, price: 5, side: 'bid', value: 10});
+
+      assert(result.taker.valueRemaining === 0n);
+      assert(result.takeSize === 10n);
+      assert(result.takeValue === 10n);
+      assert(result.makers.length === 1);
+      assert(orderBook.get('ask0').sizeRemaining === 990n);
+      assert(orderBook.has('ask1') === true);
+      assertBookIsConsistent(orderBook);
+    });
+
+    it('should not let a negative value bid inflate the taker', async () => {
+      let error = captureError(() => addOrder(orderBook, {id: `evil`, price: 10, side: 'bid', value: -1000000}));
+      assert(error != null);
+      assert(orderBook.bidCount === 0);
+
+      result = addOrder(orderBook, {id: `ask0`, price: 1, side: 'ask', size: 5});
+
+      assert(result.taker.sizeRemaining === 5n);
+      assert(result.takeSize === 0n);
+      assert(result.takeValue === 0n);
+      assertBookIsConsistent(orderBook);
+    });
+
+    it('should reject amounts which are not integers and accept BigInt and string amounts', async () => {
+      let error = captureError(() => addOrder(orderBook, {id: `ask0`, price: .5, side: 'ask', size: 1.5}));
+      assert(error != null);
+
+      // A number this large cannot be represented exactly, so converting it to a
+      // BigInt would silently change the amount.
+      error = captureError(() => addOrder(orderBook, {id: `ask1`, price: .5, side: 'ask', size: 1e30}));
+      assert(error != null);
+
+      error = captureError(() => addOrder(orderBook, {id: `ask2`, price: .5, side: 'ask', size: 'abc'}));
+      assert(error != null);
+
+      addOrder(orderBook, {id: `ask3`, price: .5, side: 'ask', size: '100'});
+      assert(orderBook.get('ask3').sizeRemaining === 100n);
+
+      addOrder(orderBook, {id: `ask4`, price: .6, side: 'ask', size: 100n});
+      assert(orderBook.get('ask4').sizeRemaining === 100n);
+
+      addOrder(orderBook, {id: `ask5`, price: .7, side: 'ask', size: BigInt('1000000000000000000000000000000')});
+      assert(orderBook.get('ask5').sizeRemaining === 1000000000000000000000000000000n);
+
+      assert(orderBook.askCount === 3);
+      assertBookIsConsistent(orderBook);
+    });
+  });
+
+  describe('partial fill accounting', async () => {
+    it('should report a take value which matches the value credited to the makers', async () => {
+      addOrder(orderBook, {id: `ask0`, price: 3, side: 'ask', size: 1000});
+      result = addOrder(orderBook, {id: `bid0`, price: 3, side: 'bid', value: 5});
+
+      // The maker gives up 1 unit of size, so it must be credited the value of 1
+      // unit of size and not the taker's whole remaining value of 5.
+      assert(result.makers.length === 1);
+      assert(result.makers[0].lastSizeTaken === 1n);
+      assert(result.makers[0].lastValueTaken === 3n);
+      assert(result.makers[0].sizeRemaining === 999n);
+      assert(result.takeSize === 1n);
+      assert(result.takeValue === 3n);
+      assertBookIsConsistent(orderBook);
+    });
+
+    it('should report a take size which matches the size credited to the makers', async () => {
+      addOrder(orderBook, {id: `bid0`, price: .3, side: 'bid', value: 1000});
+      result = addOrder(orderBook, {id: `ask0`, price: .3, side: 'ask', size: 5});
+
+      assert(result.makers.length === 1);
+      assert(result.makers[0].lastSizeTaken === 5n);
+      assert(result.makers[0].lastValueTaken === 1n);
+      assert(result.takeSize === 5n);
+      assert(result.takeValue === 1n);
+      assertBookIsConsistent(orderBook);
+    });
+
+    it('should not credit a maker for a fill which rounds down to no size', async () => {
+      addOrder(orderBook, {id: `ask0`, price: 1000, side: 'ask', size: 10000});
+      // 999 of value buys less than one unit of size at a price of 1000.
+      result = addOrder(orderBook, {id: `bid0`, price: 1000, side: 'bid', value: 999});
+
+      assert(result.makers.length === 0);
+      assert(result.takeSize === 0n);
+      assert(result.takeValue === 0n);
+      assert(orderBook.get('ask0').sizeRemaining === 10000n);
+      assert(orderBook.get('ask0').lastSizeTaken === 0n);
+      assert(orderBook.has('bid0') === false);
+      // Nothing was traded, so the whole order is reported back as untraded.
+      assert(result.taker.valueRemaining === 999n);
+      assertBookIsConsistent(orderBook);
+    });
+
+    it('should not credit a maker for a fill which rounds down to no value', async () => {
+      addOrder(orderBook, {id: `bid0`, price: .0001, side: 'bid', value: 1000});
+      // 5000 units of size is worth less than 1 of value at a price of .0001, so
+      // the maker must not be credited the size for free. Repeating the attempt
+      // must not deplete the maker either.
+      for (let i = 0; i < 3; i++) {
+        result = addOrder(orderBook, {id: `ask${i}`, price: .0001, side: 'ask', size: 5000});
+
+        assert(result.makers.length === 0);
+        assert(result.takeSize === 0n);
+        assert(result.takeValue === 0n);
+        assert(orderBook.get('bid0').valueRemaining === 1000n);
+        assert(orderBook.get('bid0').lastSizeTaken === 0n);
+        assert(result.taker.sizeRemaining === 5000n);
+        assert(orderBook.has(`ask${i}`) === false);
+      }
+      assert(orderBook.bidCount === 1);
+      assert(orderBook.askCount === 0);
+      assertBookIsConsistent(orderBook);
+    });
+
+    it('should not pay a taker for a maker whose remaining value cannot buy any size', async () => {
+      // 1 of value cannot buy a whole unit of size at a price of 3, so this bid is
+      // stranded. Taking it used to hand the taker its whole remaining value in
+      // exchange for no size at all.
+      addOrder(orderBook, {id: `bid0`, price: 3, side: 'bid', value: 1});
+      result = addOrder(orderBook, {id: `ask0`, price: 1, side: 'ask', size: 10});
+
+      assert(result.makers.length === 0);
+      assert(result.takeSize === 0n);
+      assert(result.takeValue === 0n);
+      assert(orderBook.get('bid0').valueRemaining === 1n);
+      assert(orderBook.get('ask0').sizeRemaining === 10n);
+      assertBookIsConsistent(orderBook);
+
+      // The stranded order must not block a maker behind it from being filled.
+      addOrder(orderBook, {id: `bid1`, price: 3, side: 'bid', value: 100});
+      result = addOrder(orderBook, {id: `ask1`, price: 1, side: 'ask', size: 10});
+
+      assert(result.makers.length === 1);
+      assert(result.makers[0].id === 'bid1');
+      assert(result.takeSize === 10n);
+      assert(result.takeValue === 30n);
+      assert(orderBook.get('bid0').valueRemaining === 1n);
+      assertBookIsConsistent(orderBook);
+    });
+
+    it('should not pay a taker for a maker whose remaining size is not worth any value', async () => {
+      // 3 units of size are worth less than 1 of value at a price of .0001.
+      addOrder(orderBook, {id: `ask0`, price: .0001, side: 'ask', size: 3});
+      result = addOrder(orderBook, {id: `bid0`, price: 1, side: 'bid', value: 10});
+
+      assert(result.makers.length === 0);
+      assert(result.takeSize === 0n);
+      assert(result.takeValue === 0n);
+      assert(orderBook.get('ask0').sizeRemaining === 3n);
+      assert(orderBook.get('bid0').valueRemaining === 10n);
+      assertBookIsConsistent(orderBook);
+    });
+
+    it('should report a remainder which was too small to trade instead of zeroing it', async () => {
+      // 5 of value buys 1 unit of size at a price of 3; the leftover 2 cannot buy
+      // anything, so it is reported on the taker for the host application to return
+      // to the sender rather than being resting in the book as a dust order.
+      addOrder(orderBook, {id: `ask0`, price: 3, side: 'ask', size: 1000});
+      result = addOrder(orderBook, {id: `bid0`, price: 3, side: 'bid', value: 5});
+
+      assert(result.takeValue === 3n);
+      assert(result.taker.valueRemaining === 2n);
+      assert(BigInt(result.taker.value) === result.takeValue + result.taker.valueRemaining);
+      assert(orderBook.has('bid0') === false);
+      assert(orderBook.bidCount === 0);
+      assertBookIsConsistent(orderBook);
+
+      // An ask taker sells all of its remaining size in the same situation, so it has
+      // nothing left over.
+      addOrder(orderBook, {id: `bid1`, price: .3, side: 'bid', value: 1000});
+      result = addOrder(orderBook, {id: `ask1`, price: .3, side: 'ask', size: 5});
+
+      assert(result.takeSize === 5n);
+      assert(result.taker.sizeRemaining === 0n);
+      assert(BigInt(result.taker.size) === result.takeSize + result.taker.sizeRemaining);
+      assert(orderBook.has('ask1') === false);
+      assertBookIsConsistent(orderBook);
+    });
+
+    it('should keep a skipped maker in the order book when the levels around it are emptied', async () => {
+      // The ask at .6 is worth no value at all, so it has to survive a sweep which
+      // empties the levels on either side of it. Those levels are dropped with a
+      // range delete, which would otherwise take the skipped maker's level with it
+      // while the order itself stayed counted.
+      addOrder(orderBook, {id: `ask0`, price: .5, side: 'ask', size: 10});
+      addOrder(orderBook, {id: `dust`, price: .6, side: 'ask', size: 1});
+      addOrder(orderBook, {id: `ask1`, price: .7, side: 'ask', size: 10});
+
+      result = addOrder(orderBook, {id: `bid0`, price: 1, side: 'bid', value: 100});
+
+      assert(result.makers.length === 2);
+      assert(result.makers[0].id === 'ask0');
+      assert(result.makers[1].id === 'ask1');
+      assert(result.takeSize === 20n);
+      assert(result.takeValue === 12n);
+      assert(orderBook.has('ask0') === false);
+      assert(orderBook.has('ask1') === false);
+      assert(orderBook.has('dust') === true);
+      assert(orderBook.askCount === 1);
+      assert(orderBook.getMinAsk().id === 'dust');
+      assert(orderBook.get('dust').sizeRemaining === 1n);
+      assertBookIsConsistent(orderBook);
+
+      // The skipped maker is still a normal order which its sender can cancel.
+      assert(orderBook.remove('dust').id === 'dust');
+      assert(orderBook.askCount === 0);
+      assert([...orderBook.askList.findEntriesFromMin()].length === 0);
+      assertBookIsConsistent(orderBook);
+    });
+
+    it('should keep the take totals equal to the sum of the maker legs across many fills', async () => {
+      let seed = 7919;
+      let random = () => {
+        seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+        return seed / 0x7fffffff;
+      };
+      let fillCount = 0;
+      for (let run = 0; run < 50; run++) {
+        orderBook = new BigOrderBook({priceDecimalPrecision: 4});
+        for (let i = 0; i < 40; i++) {
+          let price = Math.round((.1 + random() * 20) * 10000) / 10000;
+          let amount = BigInt(1 + Math.floor(random() * 500));
+          let side = random() < .5 ? 'ask' : 'bid';
+          result = addOrder(
+            orderBook,
+            side === 'ask' ?
+              {id: `ask${run}_${i}`, price, side, size: amount} :
+              {id: `bid${run}_${i}`, price, side, value: amount}
+          );
+          let makerSizeTotal = result.makers.reduce((total, maker) => total + maker.lastSizeTaken, 0n);
+          let makerValueTotal = result.makers.reduce((total, maker) => total + maker.lastValueTaken, 0n);
+          assert(result.takeSize === makerSizeTotal);
+          assert(result.takeValue === makerValueTotal);
+          // Everything the taker committed is either traded, still resting in the
+          // book, or reported back as untraded; none of it is unaccounted for.
+          if (side === 'ask') {
+            assert(amount === result.takeSize + result.taker.sizeRemaining);
+          } else {
+            assert(amount === result.takeValue + result.taker.valueRemaining);
+          }
+          if (result.makers.length) {
+            fillCount++;
+          }
+          assertBookIsConsistent(orderBook);
+        }
+      }
+      // Guards against the loop above silently stopping to produce any fills.
+      assert(fillCount > 100);
+    });
+
+    it('should still honour the minimum partial take thresholds', async () => {
+      orderBook = new BigOrderBook({priceDecimalPrecision: 4, minPartialTakeSize: 51});
+
+      addOrder(orderBook, {id: `ask0`, price: 2, side: 'ask', size: 1000});
+      addOrder(orderBook, {id: `ask1`, price: 1, side: 'ask', size: 1000});
+      result = orderBook.add(makeOrder({id: `bid0`, type: 'market', side: 'bid', value: 1100}));
+
+      // The 100 of value left over after ask1 only buys 50 of size at a price of
+      // 2, which is below the minimum take size, so it is intentionally given up
+      // rather than being used to nibble at ask0.
+      assert(result.takeSize === 1000n);
+      assert(result.takeValue === 1000n);
+      assert(result.makers.length === 1);
+      assert(orderBook.get('ask0').sizeRemaining === 1000n);
+      // The 100 which was not traded is reported on the taker so that it can be
+      // returned to the sender, even though the order does not rest in the book.
+      assert(result.taker.valueRemaining === 100n);
+      assert(orderBook.has('bid0') === false);
+      assertBookIsConsistent(orderBook);
+    });
+  });
+
+  describe('price validation', async () => {
+    it('should reject a price which rounds down to zero at the configured precision', async () => {
+      for (let price of [.00004, .00001, 1e-30]) {
+        let error = captureError(() => addOrder(orderBook, {id: `ask-${price}`, price, side: 'ask', size: 100}));
+        assert(error != null);
+        error = captureError(() => addOrder(orderBook, {id: `bid-${price}`, price, side: 'bid', value: 100}));
+        assert(error != null);
+      }
+      // Half of the smallest increment still rounds up to a usable price.
+      addOrder(orderBook, {id: `ask0`, price: .00005, side: 'ask', size: 100});
+      assert(orderBook.get('ask0').price === .0001);
+      assertBookIsConsistent(orderBook);
+    });
+
+    it('should reject a price which is not a finite number', async () => {
+      for (let price of [NaN, Infinity, -Infinity, 'abc', null, undefined, {}]) {
+        let error = captureError(() => addOrder(orderBook, {id: `ask-${price}`, price, side: 'ask', size: 100}));
+        assert(error != null);
+        error = captureError(() => addOrder(orderBook, {id: `bid-${price}`, price, side: 'bid', value: 100}));
+        assert(error != null);
+      }
+      assert(orderBook.askCount === 0);
+      assert(orderBook.bidCount === 0);
+      assertBookIsConsistent(orderBook);
+    });
+
+    it('should reject a price which is too large for the configured precision', async () => {
+      let error = captureError(() => addOrder(orderBook, {id: `ask0`, price: 1e300, side: 'ask', size: 100}));
+      assert(error != null);
+      assert(orderBook.askCount === 0);
+    });
+
+    it('should reject a priceDecimalPrecision which cannot be represented exactly', async () => {
+      let error = captureError(() => new BigOrderBook({priceDecimalPrecision: 400}));
+      assert(error != null);
+      error = captureError(() => new BigOrderBook({priceDecimalPrecision: -1}));
+      assert(error != null);
+      error = captureError(() => new BigOrderBook({priceDecimalPrecision: 2.5}));
+      assert(error != null);
+    });
+
+    it('should keep matching after a rejected price so the book cannot be poisoned', async () => {
+      // A price of 0 used to be stored as-is and made every later crossing order
+      // throw a division by zero, which left the book permanently unusable.
+      let error = captureError(() => addOrder(orderBook, {id: `poison`, price: .00004, side: 'ask', size: 1}));
+      assert(error != null);
+
+      addOrder(orderBook, {id: `ask0`, price: .5, side: 'ask', size: 100});
+      result = addOrder(orderBook, {id: `bid0`, price: .5, side: 'bid', value: 10});
+
+      assert(result.takeSize === 20n);
+      assert(result.takeValue === 10n);
+
+      result = orderBook.add(makeOrder({id: `bid1`, type: 'market', side: 'bid', value: 5}));
+      assert(result.takeValue === 5n);
+      assertBookIsConsistent(orderBook);
+    });
+  });
+
+  describe('order state property validation', async () => {
+    it('should reject order state properties which the order book computes itself', async () => {
+      let stateProperties = ['sizeRemaining', 'lastSizeTaken', 'lastValueTaken'];
+      for (let property of stateProperties) {
+        let error = captureError(
+          () => addOrder(orderBook, {id: `ask-${property}`, price: 1, side: 'ask', size: 1, [property]: 1000000})
+        );
+        assert(error != null);
+      }
+      for (let property of ['valueRemaining', 'lastSizeTaken', 'lastValueTaken']) {
+        let error = captureError(
+          () => addOrder(orderBook, {id: `bid-${property}`, price: 1, side: 'bid', value: 1, [property]: 1000000})
+        );
+        assert(error != null);
+      }
+      assert(orderBook.askCount === 0);
+      assert(orderBook.bidCount === 0);
+    });
+
+    it('should not let a declared size be bypassed with a larger sizeRemaining', async () => {
+      addOrder(orderBook, {id: `bid0`, price: 1, side: 'bid', value: 1000000});
+
+      let error = captureError(
+        () => addOrder(orderBook, {id: `cheat`, price: 1, side: 'ask', size: 1, sizeRemaining: 1000000})
+      );
+      assert(error != null);
+      assert(orderBook.get('bid0').valueRemaining === 1000000n);
+
+      result = addOrder(orderBook, {id: `honest`, price: 1, side: 'ask', size: 1});
+      assert(result.takeSize === 1n);
+      assert(result.takeValue === 1n);
+      assertBookIsConsistent(orderBook);
+    });
+
+    it('should accept order state properties when restoring a trusted snapshot', async () => {
+      addOrder(orderBook, {id: `ask0`, price: .5, side: 'ask', size: 100});
+      addOrder(orderBook, {id: `bid0`, price: .5, side: 'bid', value: 10});
+
+      let snapshot = orderBook.get('ask0');
+      assert(snapshot.sizeRemaining === 80n);
+      assert(snapshot.lastSizeTaken === 20n);
+      assert(snapshot.lastValueTaken === 10n);
+
+      orderBook.clear();
+      orderBook.add(snapshot, {restore: true});
+
+      let restored = orderBook.get('ask0');
+      assert(restored.sizeRemaining === 80n);
+      assert(restored.lastSizeTaken === 20n);
+      assert(restored.lastValueTaken === 10n);
+      assert(restored.price === .5);
+      assert(orderBook.getAskLevelIteratorFromMin().next().value.sizeRemaining === 80n);
+      assertBookIsConsistent(orderBook);
+
+      // Restoring still cannot introduce a non-positive remaining amount.
+      let error = captureError(
+        () => orderBook.add({...snapshot, id: 'ask1', sizeRemaining: -5}, {restore: true})
+      );
+      assert(error != null);
+    });
+  });
+
+  describe('order type validation', async () => {
+    it('should reject an order type which is not limit or market', async () => {
+      for (let type of ['limitt', 'LIMIT', '', null, undefined, 0]) {
+        let error = captureError(() => orderBook.add(makeOrder({id: `ask-${type}`, type, price: 1, side: 'ask', size: 1})));
+        assert(error != null);
+      }
+      assert(orderBook.askCount === 0);
+    });
+
+    it('should not let an unrecognized order type sweep past the order price', async () => {
+      addOrder(orderBook, {id: `ask0`, price: 1, side: 'ask', size: 100});
+      addOrder(orderBook, {id: `ask1`, price: 99999, side: 'ask', size: 100});
+
+      // A typo in the type used to turn this into a market order which ignored
+      // its own price and filled against ask1.
+      let error = captureError(
+        () => orderBook.add(makeOrder({id: `bid0`, type: 'limitt', price: 1, side: 'bid', value: 1000000}))
+      );
+      assert(error != null);
+      assert(orderBook.has('ask1') === true);
+      assert(orderBook.get('ask1').sizeRemaining === 100n);
+
+      result = addOrder(orderBook, {id: `bid1`, price: 1, side: 'bid', value: 1000000});
+      assert(result.makers.length === 1);
+      assert(result.makers[0].id === 'ask0');
+      assert(orderBook.get('ask1').sizeRemaining === 100n);
+      assertBookIsConsistent(orderBook);
+    });
+  });
+
+  describe('order isolation', async () => {
+    it('should not mutate the order object which was passed in', async () => {
+      let order = makeOrder({id: `ask0`, price: .50004, side: 'ask', size: 100});
+      orderBook.add(order);
+
+      assert(order.price === .50004);
+      assert(order.sizeRemaining === undefined);
+      assert(order.lastSizeTaken === undefined);
+      assert(order.lastValueTaken === undefined);
+      assert(orderBook.get('ask0').price === .5);
+
+      // The same object can therefore be submitted again once it is removed.
+      orderBook.remove('ask0');
+      orderBook.add(order);
+      assert(orderBook.get('ask0').sizeRemaining === 100n);
+      assertBookIsConsistent(orderBook);
+    });
+
+    it('should not expose the stored order through get', async () => {
+      addOrder(orderBook, {id: `ask0`, price: .5, side: 'ask', size: 100});
+
+      let order = orderBook.get('ask0');
+      order.sizeRemaining = 10n ** 30n;
+      order.price = .0001;
+
+      assert(orderBook.get('ask0').sizeRemaining === 100n);
+      assert(orderBook.get('ask0').price === .5);
+      assert(orderBook.getMinAsk().price === .5);
+      assert(orderBook.getAskLevelIteratorFromMin().next().value.sizeRemaining === 100n);
+      assertBookIsConsistent(orderBook);
+
+      // Mutating a returned order used to repoint it at a price level which does
+      // not exist, which left an empty level behind on removal.
+      orderBook.remove('ask0');
+      assert(orderBook.getMinAsk() === undefined);
+      assert([...orderBook.askList.findEntriesFromMin()].length === 0);
+      assertBookIsConsistent(orderBook);
+    });
+
+    it('should not expose the stored order through the order iterators', async () => {
+      addOrder(orderBook, {id: `ask0`, price: .5, side: 'ask', size: 100});
+      addOrder(orderBook, {id: `ask1`, price: .6, side: 'ask', size: 200});
+
+      for (let order of orderBook.getAskIteratorFromMin()) {
+        order.sizeRemaining = 0n;
+        order.price = .0001;
+      }
+      for (let order of orderBook.findAsks(.5).asc) {
+        order.sizeRemaining = 0n;
+      }
+
+      assert(orderBook.get('ask0').sizeRemaining === 100n);
+      assert(orderBook.get('ask1').sizeRemaining === 200n);
+      assertBookIsConsistent(orderBook);
+    });
+
+    it('should not expose the stored order through remove or the best price getters', async () => {
+      addOrder(orderBook, {id: `ask0`, price: .5, side: 'ask', size: 100});
+      addOrder(orderBook, {id: `ask1`, price: .6, side: 'ask', size: 200});
+      addOrder(orderBook, {id: `bid0`, price: .4, side: 'bid', value: 100});
+
+      orderBook.getMinAsk().sizeRemaining = 0n;
+      orderBook.getMaxAsk().sizeRemaining = 0n;
+      orderBook.getMinBid().valueRemaining = 0n;
+      orderBook.getMaxBid().valueRemaining = 0n;
+      assert(orderBook.get('ask0').sizeRemaining === 100n);
+      assert(orderBook.get('bid0').valueRemaining === 100n);
+
+      let removed = orderBook.remove('ask1');
+      removed.sizeRemaining = 0n;
+      assert(orderBook.has('ask1') === false);
+      assert(orderBook.get('ask0').sizeRemaining === 100n);
+      assertBookIsConsistent(orderBook);
+    });
+  });
+
+  describe('order book growth', async () => {
+    it('should not let a zero amount order rest in the order book', async () => {
+      let error = captureError(() => addOrder(orderBook, {id: `bid0`, price: 5, side: 'bid', value: 0}));
+      assert(error != null);
+      error = captureError(() => addOrder(orderBook, {id: `ask0`, price: 9, side: 'ask', size: 0}));
+      assert(error != null);
+
+      assert(orderBook.askCount === 0);
+      assert(orderBook.bidCount === 0);
+      assert([...orderBook.askList.findEntriesFromMin()].length === 0);
+      assert([...orderBook.bidList.findEntriesFromMin()].length === 0);
+      assertBookIsConsistent(orderBook);
+    });
+
+    it('should cap the number of resting orders when maxOrderCount is set', async () => {
+      orderBook = new BigOrderBook({priceDecimalPrecision: 4, maxOrderCount: 2});
+
+      addOrder(orderBook, {id: `ask0`, price: .5, side: 'ask', size: 100});
+      addOrder(orderBook, {id: `ask1`, price: .6, side: 'ask', size: 100});
+
+      let error = captureError(() => addOrder(orderBook, {id: `ask2`, price: .7, side: 'ask', size: 100}));
+      assert(error != null);
+      assert(orderBook.has('ask2') === false);
+      assert(orderBook.askCount === 2);
+
+      // Market orders never rest, so they must stay available for draining a
+      // book which is already at capacity.
+      result = orderBook.add(makeOrder({id: `bid0`, type: 'market', side: 'bid', value: 10}));
+      assert(result.takeSize === 20n);
+      assert(orderBook.askCount === 2);
+
+      orderBook.remove('ask1');
+      addOrder(orderBook, {id: `ask3`, price: .7, side: 'ask', size: 100});
+      assert(orderBook.has('ask3') === true);
+      assertBookIsConsistent(orderBook);
+    });
+
+    it('should allow unlimited orders by default', async () => {
+      for (let i = 0; i < 200; i++) {
+        addOrder(orderBook, {id: `ask${i}`, price: 1 + i / 100, side: 'ask', size: 100});
+      }
+      assert(orderBook.askCount === 200);
+      assertBookIsConsistent(orderBook);
     });
   });
 });
